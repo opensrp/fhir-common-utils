@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.smartregister</groupId>
+    <artifactId>fhir-common-utils</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+
+    <properties>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+        <hapi.fhir.base.version>5.5.0</hapi.fhir.base.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <artifactId>hapi-fhir-base</artifactId>
+            <groupId>ca.uhn.hapi.fhir</groupId>
+            <version>${hapi.fhir.base.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ca.uhn.hapi.fhir</groupId>
+            <artifactId>org.hl7.fhir.r4</artifactId>
+            <version>5.4.10</version>
+        </dependency>
+    </dependencies>
+</project>
