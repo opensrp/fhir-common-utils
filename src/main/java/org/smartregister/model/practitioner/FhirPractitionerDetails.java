@@ -19,8 +19,7 @@ import ca.uhn.fhir.model.api.annotation.Child;
 import ca.uhn.fhir.model.api.annotation.DatatypeDef;
 import ca.uhn.fhir.util.ElementUtil;
 import org.hl7.fhir.instance.model.api.ICompositeType;
-import org.hl7.fhir.r4.model.StringType;
-import org.hl7.fhir.r4.model.Type;
+import org.hl7.fhir.r4.model.*;
 import org.smartregister.model.location.LocationHierarchy;
 
 import java.util.List;
@@ -30,28 +29,39 @@ public class FhirPractitionerDetails extends Type implements ICompositeType {
 
     @Child(
             name = "careteams",
-            type = {FhirCareTeamExtension.class},
+            type = {CareTeam.class},
             order = 1,
             min = 0,
             max = -1,
             modifier = false,
             summary = false)
-    List<FhirCareTeamExtension> fhirCareTeamExtensionList;
+    List<CareTeam> careTeams;
 
     @Child(
             name = "teams",
-            type = {FhirOrganizationExtension.class},
+            type = {Organization.class},
             order = 2,
             min = 0,
             max = -1,
             modifier = false,
             summary = false)
-    List<FhirOrganizationExtension> fhirOrganizationExtensions;
+    List<Organization> organizations;
+
+
+    @Child(
+            name = "locations",
+            type = {Location.class},
+            order = 3,
+            min = 0,
+            max = -1,
+            modifier = false,
+            summary = false)
+    private List<Location> locations;
 
     @Child(
             name = "locationHierarchyList",
             type = {LocationHierarchy.class},
-            order = 3,
+            order = 4,
             min = 0,
             max = -1,
             modifier = false,
@@ -61,29 +71,36 @@ public class FhirPractitionerDetails extends Type implements ICompositeType {
     @Child(
             name = "practitionerId",
             type = {StringType.class},
-            order = 4,
+            order = 5,
             min = 0,
             max = -1,
             modifier = false,
             summary = false)
     private StringType practitionerId;
 
-    public List<FhirCareTeamExtension> getFhirCareTeamExtensionList() {
-        return fhirCareTeamExtensionList;
+    public List<CareTeam> getCareTeams() {
+        return careTeams;
     }
 
-    public void setFhirCareTeamExtensionList(
-            List<FhirCareTeamExtension> fhirCareTeamExtensionList) {
-        this.fhirCareTeamExtensionList = fhirCareTeamExtensionList;
+    public void setCareTeams(
+            List<CareTeam> careTeams) {
+        this.careTeams = careTeams;
     }
 
-    public List<FhirOrganizationExtension> getFhirOrganizationExtensions() {
-        return fhirOrganizationExtensions;
+    public List<Organization> getOrganizations() {
+        return organizations;
     }
 
-    public void setFhirOrganizationExtensions(
-            List<FhirOrganizationExtension> fhirOrganizationExtensions) {
-        this.fhirOrganizationExtensions = fhirOrganizationExtensions;
+    public void setOrganizations(List<Organization> organizations) {
+        this.organizations = organizations;
+    }
+
+    public List<Location> getLocations() {
+        return locations;
+    }
+
+    public void setLocations(List<Location> locations) {
+        this.locations = locations;
     }
 
     public List<LocationHierarchy> getLocationHierarchyList() {
