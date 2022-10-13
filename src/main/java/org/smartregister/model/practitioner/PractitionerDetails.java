@@ -20,6 +20,7 @@ import ca.uhn.fhir.model.api.annotation.Description;
 import ca.uhn.fhir.model.api.annotation.ResourceDef;
 import ca.uhn.fhir.model.api.annotation.SearchParamDefinition;
 import ca.uhn.fhir.rest.gclient.TokenClientParam;
+import ca.uhn.fhir.rest.param.SpecialParam;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Practitioner;
 import org.hl7.fhir.r4.model.ResourceType;
@@ -57,7 +58,15 @@ public class PractitionerDetails extends Practitioner {
     public static final String SP_KEYCLOAK_UUID = "keycloak-uuid";
     public static final TokenClientParam KEYCLOAK_UUID = new TokenClientParam("keycloak-uuid");
 
+    @SearchParamDefinition(
+            name = "isAuthProvided",
+            path = "PractitionerDetails.isAuthProvided",
+            description = "isAuthProvided",
+            type = "token"
+    )
 
+    public static final String SP_IS_AUTH_PROVIDED = "isAuthProvided";
+    public static final SpecialParam IS_AUTH_PROVIDED = new SpecialParam().setValue("isAuthProvided");
     @Override
     public Practitioner copy() {
         Practitioner practitioner = new Practitioner();
