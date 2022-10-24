@@ -18,6 +18,9 @@ package org.smartregister.model.practitioner;
 import ca.uhn.fhir.model.api.annotation.Child;
 import ca.uhn.fhir.model.api.annotation.Description;
 import ca.uhn.fhir.model.api.annotation.ResourceDef;
+import ca.uhn.fhir.model.api.annotation.SearchParamDefinition;
+import ca.uhn.fhir.rest.gclient.TokenClientParam;
+import ca.uhn.fhir.rest.param.SpecialParam;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Practitioner;
 import org.hl7.fhir.r4.model.ResourceType;
@@ -46,6 +49,24 @@ public class PractitionerDetails extends Practitioner {
             formalDefinition = "Get resources from FHIR Server")
     private FhirPractitionerDetails fhirPractitionerDetails;
 
+    @SearchParamDefinition(
+            name = "keycloak-uuid",
+            path = "PractitionerDetails.keycloak-uuid",
+            description = "A practitioner's keycloak-uuid",
+            type = "token"
+    )
+    public static final String SP_KEYCLOAK_UUID = "keycloak-uuid";
+    public static final TokenClientParam KEYCLOAK_UUID = new TokenClientParam("keycloak-uuid");
+
+    @SearchParamDefinition(
+            name = "isAuthProvided",
+            path = "PractitionerDetails.isAuthProvided",
+            description = "isAuthProvided",
+            type = "token"
+    )
+
+    public static final String SP_IS_AUTH_PROVIDED = "isAuthProvided";
+    public static final SpecialParam IS_AUTH_PROVIDED = new SpecialParam().setValue("isAuthProvided");
     @Override
     public Practitioner copy() {
         Practitioner practitioner = new Practitioner();
@@ -79,4 +100,6 @@ public class PractitionerDetails extends Practitioner {
     public void setFhirPractitionerDetails(FhirPractitionerDetails fhirPractitionerDetails) {
         this.fhirPractitionerDetails = fhirPractitionerDetails;
     }
+
+
 }
