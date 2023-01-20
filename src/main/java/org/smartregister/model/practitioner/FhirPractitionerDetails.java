@@ -69,9 +69,28 @@ public class FhirPractitionerDetails extends Type implements ICompositeType {
     private List<LocationHierarchy> locationHierarchyList;
 
     @Child(
+      name = "practitionerRoles",
+      type = {PractitionerRole.class},
+      order = 5,
+      min = 0,
+      max = -1,
+      modifier = false,
+      summary = false)
+    List<PractitionerRole> practitionerRoles;
+
+    @Child(
+      name = "groups",
+      type = {Group.class},
+      order = 6,
+      min = 0,
+      max = -1,
+      modifier = false,
+      summary = false)
+    List<Group> groups;
+    @Child(
             name = "practitionerId",
             type = {StringType.class},
-            order = 5,
+            order = 7,
             min = 0,
             max = -1,
             modifier = false,
@@ -109,6 +128,22 @@ public class FhirPractitionerDetails extends Type implements ICompositeType {
 
     public void setLocationHierarchyList(List<LocationHierarchy> locationHierarchyList) {
         this.locationHierarchyList = locationHierarchyList;
+    }
+
+    public List<PractitionerRole> getPractitionerRoles() {
+        return practitionerRoles;
+    }
+
+    public void setPractitionerRoles(List<PractitionerRole> practitionerRoles) {
+        this.practitionerRoles = practitionerRoles;
+    }
+
+    public List<Group> getGroups() {
+        return groups;
+    }
+
+    public void setGroups(List<Group> groups) {
+        this.groups = groups;
     }
 
     public StringType getPractitionerId() {
