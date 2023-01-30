@@ -46,4 +46,7 @@ public interface Constants {
     String CARE_TEAM = "CareTeam";
     String ORGANIZATION = "Organization";
     String ORGANIZATION_AFFILIATION = "OrganizationAffiliation";
+    String CODE = "code";
+    String MEMBER = "member";
+    String GROUP = "Group";
 }
