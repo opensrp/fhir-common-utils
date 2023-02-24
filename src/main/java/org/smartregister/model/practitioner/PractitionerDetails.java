@@ -34,14 +34,6 @@ import java.util.List;
 public class PractitionerDetails extends Practitioner {
 
     @Child(
-            name = "KeycloakUserDetails",
-            type = {KeycloakUserDetails.class})
-    @Description(
-            shortDefinition = "Get Keycloak User details from the Keycloak server",
-            formalDefinition = "Get Keycloak User details from the Keycloak server")
-    private KeycloakUserDetails keycloakUserDetails;
-
-    @Child(
             name = "fhir",
             type = {FhirPractitionerDetails.class})
     @Description(
@@ -58,15 +50,6 @@ public class PractitionerDetails extends Practitioner {
     public static final String SP_KEYCLOAK_UUID = "keycloak-uuid";
     public static final TokenClientParam KEYCLOAK_UUID = new TokenClientParam("keycloak-uuid");
 
-    @SearchParamDefinition(
-            name = "isAuthProvided",
-            path = "PractitionerDetails.isAuthProvided",
-            description = "isAuthProvided",
-            type = "token"
-    )
-
-    public static final String SP_IS_AUTH_PROVIDED = "isAuthProvided";
-    public static final SpecialParam IS_AUTH_PROVIDED = new SpecialParam().setValue("isAuthProvided");
     @Override
     public Practitioner copy() {
         Practitioner practitioner = new Practitioner();
@@ -83,14 +66,6 @@ public class PractitionerDetails extends Practitioner {
     @Override
     public ResourceType getResourceType() {
         return ResourceType.Bundle;
-    }
-
-    public KeycloakUserDetails getUserDetail() {
-        return keycloakUserDetails;
-    }
-
-    public void setUserDetail(KeycloakUserDetails keycloakUserDetails) {
-        this.keycloakUserDetails = keycloakUserDetails;
     }
 
     public FhirPractitionerDetails getFhirPractitionerDetails() {
