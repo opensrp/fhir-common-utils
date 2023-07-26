@@ -95,7 +95,17 @@ public class FhirPractitionerDetails extends Type implements ICompositeType {
             max = -1,
             modifier = false,
             summary = false)
-    private Practitioner practitioner;
+    private List<Practitioner> practitioners;
+
+    @Child(
+            name = "organizationAffiliation",
+            type = {OrganizationAffiliation.class},
+            order = 8,
+            min = 0,
+            max = -1,
+            modifier = false,
+            summary = false)
+    private List<OrganizationAffiliation> organizationAffiliations;
 
     public List<CareTeam> getCareTeams() {
         return careTeams;
@@ -146,12 +156,20 @@ public class FhirPractitionerDetails extends Type implements ICompositeType {
         this.groups = groups;
     }
 
-    public Practitioner getPractitioner() {
-        return practitioner;
+    public List<Practitioner> getPractitioners() {
+        return practitioners;
     }
 
-    public void setPractitioner(Practitioner practitioner) {
-        this.practitioner = practitioner;
+    public void setPractitioners(List<Practitioner> practitioners) {
+        this.practitioners = practitioners;
+    }
+
+    public List<OrganizationAffiliation> getOrganizationAffiliations() {
+        return organizationAffiliations;
+    }
+
+    public void setOrganizationAffiliations(List<OrganizationAffiliation> organizationAffiliations) {
+        this.organizationAffiliations = organizationAffiliations;
     }
 
     @Override
@@ -163,7 +181,7 @@ public class FhirPractitionerDetails extends Type implements ICompositeType {
 
     @Override
     public boolean isEmpty() {
-        return ElementUtil.isEmpty(practitioner);
+        return ElementUtil.isEmpty(practitioners);
     }
 
     @Override
