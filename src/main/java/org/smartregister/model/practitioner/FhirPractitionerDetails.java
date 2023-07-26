@@ -95,7 +95,7 @@ public class FhirPractitionerDetails extends Type implements ICompositeType {
             max = -1,
             modifier = false,
             summary = false)
-    private Practitioner practitioner;
+    private List<Practitioner> practitioners;
 
     public List<CareTeam> getCareTeams() {
         return careTeams;
@@ -146,12 +146,12 @@ public class FhirPractitionerDetails extends Type implements ICompositeType {
         this.groups = groups;
     }
 
-    public Practitioner getPractitioner() {
-        return practitioner;
+    public List<Practitioner> getPractitioners() {
+        return practitioners;
     }
 
-    public void setPractitioner(Practitioner practitioner) {
-        this.practitioner = practitioner;
+    public void setPractitioners(List<Practitioner> practitioners) {
+        this.practitioners = practitioners;
     }
 
     @Override
@@ -163,7 +163,7 @@ public class FhirPractitionerDetails extends Type implements ICompositeType {
 
     @Override
     public boolean isEmpty() {
-        return ElementUtil.isEmpty(practitioner);
+        return ElementUtil.isEmpty(practitioners);
     }
 
     @Override
