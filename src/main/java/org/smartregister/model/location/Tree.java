@@ -26,6 +26,7 @@ import org.hl7.fhir.r4.model.Type;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 
 import static org.smartregister.utils.Constants.SLASH_UNDERSCORE;
@@ -98,18 +99,20 @@ public class Tree extends Type implements ICompositeType {
         StringType parentStringType = new StringType();
         parentStringType.setValue(parent);
         kids.add(idStringType);
-        Boolean setParentChildMap = false;
-        for (int i = 0; i < parentChildren.size(); i++) {
-            if (parentChildren.get(i) != null
-                    && parentChildren.get(i).getIdentifier() != null
-                    && StringUtils.isNotBlank(parentChildren.get(i).getIdentifier().getValue())
-                    && parentChildren.get(i).getIdentifier().getValue().equals(parent)) {
-                parentChildren.get(i).setChildIdentifiers(kids);
-                setParentChildMap = true;
-            }
-        }
+        AtomicReference<Boolean> setParentChildMap = new AtomicReference<>(false);
 
-        if (!setParentChildMap) {
+        List<StringType> finalKids = kids;
+        parentChildren.parallelStream().filter(parentChildrenMap -> parentChildrenMap != null
+                && parentChildrenMap.getIdentifier() != null
+                && StringUtils.isNotBlank(parentChildrenMap.getIdentifier().getValue())
+                && parentChildrenMap.getIdentifier().getValue().equals(parent)).forEach(parentChildrenMap -> {
+
+                parentChildrenMap.setChildIdentifiers(finalKids);
+                setParentChildMap.set(true);
+
+        });
+
+        if (!setParentChildMap.get()) {
             ParentChildrenMap parentChildrenMap = new ParentChildrenMap();
             parentChildrenMap.setIdentifier(parentStringType);
             parentChildrenMap.setChildIdentifiers(kids);
@@ -140,31 +143,27 @@ public class Tree extends Type implements ICompositeType {
                 parentNode.addChild(treeNode);
             } else {
                 // if no parent exists add it as root node
-                String idString = (String) id;
-                if (idString.contains(SLASH_UNDERSCORE)) {
-                    idString = idString.substring(0, idString.indexOf(SLASH_UNDERSCORE));
-                }
-                SingleTreeNode singleTreeNode = new SingleTreeNode();
-                StringType treeNodeId = new StringType();
-                treeNodeId.setValue(idString);
-                singleTreeNode.setTreeNodeId(treeNodeId);
-                singleTreeNode.setTreeNode(treeNode);
+                SingleTreeNode singleTreeNode = getSingleTreeNode(id, treeNode);
                 listOfNodes = singleTreeNode;
             }
         } else {
             // if no parent add it as root node
-            String idString = id;
-            if (idString.contains(SLASH_UNDERSCORE)) {
-                idString = idString.substring(0, idString.indexOf(SLASH_UNDERSCORE));
-            }
-
-            SingleTreeNode singleTreeNode = new SingleTreeNode();
-            StringType treeNodeId = new StringType();
-            treeNodeId.setValue(idString);
-            singleTreeNode.setTreeNodeId(treeNodeId);
-            singleTreeNode.setTreeNode(treeNode);
+            SingleTreeNode singleTreeNode = getSingleTreeNode(id, treeNode);
             listOfNodes = singleTreeNode;
         }
+    }
+
+    private static SingleTreeNode getSingleTreeNode(String id, TreeNode treeNode) {
+        String idString = id;
+        if (idString.contains(SLASH_UNDERSCORE)) {
+            idString = idString.substring(0, idString.indexOf(SLASH_UNDERSCORE));
+        }
+        SingleTreeNode singleTreeNode = new SingleTreeNode();
+        StringType treeNodeId = new StringType();
+        treeNodeId.setValue(idString);
+        singleTreeNode.setTreeNodeId(treeNodeId);
+        singleTreeNode.setTreeNode(treeNode);
+        return singleTreeNode;
     }
 
     private TreeNode makeNode(String id, String label, Location node, String parentId) {
@@ -172,11 +171,11 @@ public class Tree extends Type implements ICompositeType {
         if (treenode == null) {
             treenode = new TreeNode();
             StringType nodeId = new StringType();
-            String idString = (String) id;
+            String idString = id;
             if (idString.contains(SLASH_UNDERSCORE)) {
                 idString = idString.substring(0, idString.indexOf(SLASH_UNDERSCORE));
             }
-            nodeId.setValue((String) idString);
+            nodeId.setValue(idString);
             treenode.setNodeId(nodeId);
             StringType labelString = new StringType();
             labelString.setValue(label);

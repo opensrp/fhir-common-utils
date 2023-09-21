@@ -58,9 +58,7 @@ public class LocationHierarchyTree extends Type implements ICompositeType {
      * @param locations
      */
     public void buildTreeFromList(List<Location> locations) {
-        for (Location location : locations) {
-            addLocation(location);
-        }
+        locations.parallelStream().forEach(location -> addLocation(location));
     }
 
     public Tree getLocationsHierarchy() {
