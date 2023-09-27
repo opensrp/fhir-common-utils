@@ -14,10 +14,9 @@ public class TestUtils {
 
         List<Location> locationList = new ArrayList<>();
 
-
         int parentId = 1;
 
-        for (Integer i = 1; i <  TOTAL_LOCATIONS + 1; i++) {
+        for (int i = 1; i <  TOTAL_LOCATIONS + 1; i++) {
 
             if(i == 1){
                 parentId = 1;

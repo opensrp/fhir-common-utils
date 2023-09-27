@@ -18,7 +18,6 @@ package org.smartregister.model.location;
 import org.hl7.fhir.r4.model.Location;
 import org.hl7.fhir.r4.model.Reference;
 import org.junit.Test;
-import org.smartregister.model.location.utils.TestUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -52,10 +51,9 @@ public class LocationHierarchyTreeTest {
 
     @Test
     public void testBuildTreeFromList() {
-        List<Location> locationList = TestUtils.getTestLocations();
+        List<Location> locationList = getLocationList();
         LocationHierarchyTree locationHierarchyTree = new LocationHierarchyTree();
         locationHierarchyTree.buildTreeFromList(locationList);
-
         Tree tree = locationHierarchyTree.getLocationsHierarchy();
         assertNotNull(tree);
         assertNotNull(tree.getTree());

@@ -32,7 +32,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.logging.Logger;
 
 @DatatypeDef(name = "Tree")
 public class Tree extends Type implements ICompositeType {
@@ -51,8 +50,6 @@ public class Tree extends Type implements ICompositeType {
             modifier = false,
             summary = false)
     private List<ParentChildrenMap> parentChildren;
-
-    private static final Logger logger = Logger.getLogger(Tree.class.getSimpleName());
 
     public SingleTreeNode getTree() {
         return listOfNodes;
@@ -143,7 +140,7 @@ public class Tree extends Type implements ICompositeType {
             }
 
         } else {
-            logger.severe("Node with ID " + id + " already exists in tree");
+            throw new IllegalArgumentException("Node with ID " + id + " already exists in tree");
         }
     }
 
