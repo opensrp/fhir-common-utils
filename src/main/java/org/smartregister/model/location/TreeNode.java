@@ -20,12 +20,13 @@ import ca.uhn.fhir.model.api.annotation.DatatypeDef;
 import ca.uhn.fhir.util.ElementUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.hl7.fhir.instance.model.api.ICompositeType;
-import org.hl7.fhir.r4.model.*;
+import org.hl7.fhir.r4.model.Location;
+import org.hl7.fhir.r4.model.StringType;
+import org.hl7.fhir.r4.model.Type;
+import org.smartregister.utils.Utils;
 
 import java.util.ArrayList;
 import java.util.List;
-
-import static org.smartregister.utils.Constants.SLASH_UNDERSCORE;
 
 @DatatypeDef(name = "TreeNode")
 public class TreeNode extends Type implements ICompositeType {
@@ -185,30 +186,28 @@ public class TreeNode extends Type implements ICompositeType {
         children.add(childTreeNode);
     }
 
-    public TreeNode findChild(String id) {
-        String idString = (String) id;
-        if (idString.contains(SLASH_UNDERSCORE)) {
-            idString = idString.substring(0, idString.indexOf(SLASH_UNDERSCORE));
-        }
-        if (children != null && children.size() > 0) {
-            for (int i = 0; i < children.size(); i++) {
-                if (children.get(i) != null) {
-                    for (ChildTreeNode child : children) {
-                        if (child != null
-                                && child.getChildren() != null
-                                && child.getChildren().getNodeId() != null
-                                && StringUtils.isNotBlank(
-                                        child.getChildren().getNodeId().getValue())
-                                && child.getChildren().getNodeId().getValue().equals(idString)) {
-                            return child.getChildren();
-                        } else if (child != null && child != null) {
-                            TreeNode node = child.getChildren().findChild(idString);
-                            if (node != null) return node;
-                        }
-                    }
+    public TreeNode findChild(String childId) {
+
+        String idString = Utils.cleanIdString(childId);
+        if (children != null && !children.isEmpty()) {
+            for (ChildTreeNode child : children) {
+                if (isChildFound(child, idString)) {
+                    return child.getChildren();
+                } else if (child != null && child.getChildren() != null) {
+                    TreeNode node = child.getChildren().findChild(idString);
+                    if (node != null) return node;
                 }
             }
         }
         return null;
+    }
+
+    private static boolean isChildFound(ChildTreeNode child, String idString) {
+        return child != null
+                && child.getChildren() != null
+                && child.getChildren().getNodeId() != null
+                && StringUtils.isNotBlank(
+                child.getChildren().getNodeId().getValue())
+                && child.getChildren().getNodeId().getValue().equals(idString);
     }
 }
