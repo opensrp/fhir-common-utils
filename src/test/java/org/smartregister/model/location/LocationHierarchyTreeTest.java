@@ -51,41 +51,15 @@ public class LocationHierarchyTreeTest {
 
     @Test
     public void testBuildTreeFromList() {
-        Location location1 = new Location();
-        location1.setId("Location/1");
-        location1.setName("Test Location");
-        Reference partOfReference = new Reference();
-        partOfReference.setReference("");
-        location1.setPartOf(partOfReference);
-
-        Location location2 = new Location();
-        location2.setId("Location/2");
-        location2.setName("Test Location 2");
-        partOfReference = new Reference();
-        partOfReference.setReference("Location/1");
-        location2.setPartOf(partOfReference);
-
-        Location location3 = new Location();
-        location3.setId("Location/3");
-        location3.setName("Test Location 3");
-        partOfReference = new Reference();
-        partOfReference.setReference("Location/2");
-        location3.setPartOf(partOfReference);
-
+        List<Location> locationList = getLocationList();
         LocationHierarchyTree locationHierarchyTree = new LocationHierarchyTree();
-
-        List<Location> locationList = new ArrayList<>();
-        locationList.add(location1);
-        locationList.add(location2);
-        locationList.add(location3);
-
         locationHierarchyTree.buildTreeFromList(locationList);
         Tree tree = locationHierarchyTree.getLocationsHierarchy();
         assertNotNull(tree);
         assertNotNull(tree.getTree());
         assertEquals("Location/1", tree.getTree().getTreeNodeId().getValue());
         assertEquals("Location/1", tree.getTree().getTreeNode().getNodeId().getValue());
-        assertEquals("Test Location", tree.getTree().getTreeNode().getLabel().getValue());
+        assertEquals("Test Location 1", tree.getTree().getTreeNode().getLabel().getValue());
         assertNull(tree.getTree().getTreeNode().getParent().getValue());
         assertEquals(1, tree.getTree().getTreeNode().getChildren().size());
 
@@ -247,5 +221,36 @@ public class LocationHierarchyTreeTest {
                         .getChildIdentifiers()
                         .get(0)
                         .getValue());
+    }
+
+    private static List<Location> getLocationList() {
+        Location location1 = new Location();
+        location1.setId("Location/1");
+        location1.setName("Test Location 1");
+        Reference partOfReference = new Reference();
+        partOfReference.setReference("");
+        location1.setPartOf(partOfReference);
+
+        Location location2 = new Location();
+        location2.setId("Location/2");
+        location2.setName("Test Location 2");
+        partOfReference = new Reference();
+        partOfReference.setReference("Location/1");
+        location2.setPartOf(partOfReference);
+
+        Location location3 = new Location();
+        location3.setId("Location/3");
+        location3.setName("Test Location 3");
+        partOfReference = new Reference();
+        partOfReference.setReference("Location/2");
+        location3.setPartOf(partOfReference);
+
+        List<Location> locationList = new ArrayList<>();
+        locationList.add(location1);
+        locationList.add(location2);
+        locationList.add(location3);
+
+
+        return locationList;
     }
 }

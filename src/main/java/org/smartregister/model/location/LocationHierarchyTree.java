@@ -18,17 +18,19 @@ package org.smartregister.model.location;
 import ca.uhn.fhir.model.api.annotation.Child;
 import ca.uhn.fhir.model.api.annotation.DatatypeDef;
 import ca.uhn.fhir.util.ElementUtil;
+import org.apache.commons.lang3.StringUtils;
 import org.hl7.fhir.instance.model.api.ICompositeType;
 import org.hl7.fhir.r4.model.Location;
 import org.hl7.fhir.r4.model.StringType;
 import org.hl7.fhir.r4.model.Type;
-import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
+import java.util.logging.Logger;
 
 @DatatypeDef(name = "LocationHierarchyTree")
 public class LocationHierarchyTree extends Type implements ICompositeType {
 
+    private static final Logger logger = Logger.getLogger(LocationHierarchyTree.class.getSimpleName());
     @Child(name = "locationsHierarchy")
     private Tree locationsHierarchy;
 
@@ -36,19 +38,17 @@ public class LocationHierarchyTree extends Type implements ICompositeType {
         this.locationsHierarchy = new Tree();
     }
 
-    public void addLocation(Location l) {
+    public void addLocation(Location location) {
         StringType idString = new StringType();
-        idString.setValue(l.getId());
-        if (!locationsHierarchy.hasNode(idString.getValue())) {
-            if (l.getPartOf() == null || StringUtils.isEmpty(l.getPartOf().getReference())) {
-                locationsHierarchy.addNode(idString.getValue(), l.getName(), l, null);
-            } else {
-                // get Parent Location
-                StringType parentId = new StringType();
-                parentId.setValue(l.getPartOf().getReference());
-                locationsHierarchy.addNode(
-                        idString.getValue(), l.getName(), l, parentId.getValue());
-            }
+        idString.setValue(location.getId());
+        if (location.getPartOf() == null || StringUtils.isEmpty(location.getPartOf().getReference())) {
+            locationsHierarchy.addNode(idString.getValue(), location.getName(), location, null);
+        } else {
+            // get Parent Location
+            StringType parentId = new StringType();
+            parentId.setValue(location.getPartOf().getReference());
+            locationsHierarchy.addNode(
+                    idString.getValue(), location.getName(), location, parentId.getValue());
         }
     }
 

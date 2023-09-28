@@ -23,12 +23,15 @@ import org.hl7.fhir.instance.model.api.ICompositeType;
 import org.hl7.fhir.r4.model.Location;
 import org.hl7.fhir.r4.model.StringType;
 import org.hl7.fhir.r4.model.Type;
+import org.smartregister.utils.Utils;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.logging.Logger;
-
-import static org.smartregister.utils.Constants.SLASH_UNDERSCORE;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 
 @DatatypeDef(name = "Tree")
 public class Tree extends Type implements ICompositeType {
@@ -48,8 +51,6 @@ public class Tree extends Type implements ICompositeType {
             summary = false)
     private List<ParentChildrenMap> parentChildren;
 
-    private static Logger logger = Logger.getLogger(Tree.class.getSimpleName());
-
     public SingleTreeNode getTree() {
         return listOfNodes;
     }
@@ -59,57 +60,37 @@ public class Tree extends Type implements ICompositeType {
         parentChildren = new ArrayList<>();
     }
 
-    private void addToParentChildRelation(String parent, String id) {
+    private void addToParentChildRelation(String parentId, String id) {
         if (parentChildren == null) {
-            parentChildren = new ArrayList<>();
+            parentChildren = new CopyOnWriteArrayList<>();
         }
-        List<StringType> kids = null;
-        if (parentChildren != null) {
-            for (int i = 0; i < parentChildren.size(); i++) {
-                kids =
-                        parentChildren.get(i) != null
-                                        && parentChildren.get(i).getIdentifier() != null
-                                        && StringUtils.isNotBlank(
-                                                parentChildren.get(i).getIdentifier().getValue())
-                                        && parentChildren
-                                                .get(i)
-                                                .getIdentifier()
-                                                .getValue()
-                                                .equals(parent)
-                                ? parentChildren.get(i).getChildIdentifiers()
-                                : null;
-                logger.info("Kids are : " + kids);
-                if (kids != null) {
-                    break;
-                }
-            }
-        }
+
+        List<StringType> kids = getChildrenIdsByParentId(parentId);
 
         if (kids == null) {
             kids = new ArrayList<>();
         }
         StringType idStringType = new StringType();
-        String idString = id;
-        if (idString.contains(SLASH_UNDERSCORE)) {
-            idString = idString.substring(0, idString.indexOf(SLASH_UNDERSCORE));
-        }
+        String idString = Utils.cleanIdString(id);
         idStringType.setValue(idString);
 
         StringType parentStringType = new StringType();
-        parentStringType.setValue(parent);
+        parentStringType.setValue(parentId);
         kids.add(idStringType);
-        Boolean setParentChildMap = false;
-        for (int i = 0; i < parentChildren.size(); i++) {
-            if (parentChildren.get(i) != null
-                    && parentChildren.get(i).getIdentifier() != null
-                    && StringUtils.isNotBlank(parentChildren.get(i).getIdentifier().getValue())
-                    && parentChildren.get(i).getIdentifier().getValue().equals(parent)) {
-                parentChildren.get(i).setChildIdentifiers(kids);
-                setParentChildMap = true;
-            }
-        }
+        AtomicReference<Boolean> setParentChildMap = new AtomicReference<>(false);
 
-        if (!setParentChildMap) {
+        List<StringType> finalKids = kids;
+        parentChildren.parallelStream().filter(parentChildrenMap -> parentChildrenMap != null
+                && parentChildrenMap.getIdentifier() != null
+                && StringUtils.isNotBlank(parentChildrenMap.getIdentifier().getValue())
+                && parentChildrenMap.getIdentifier().getValue().equals(parentId)).forEach(innerParentChildrenMap -> {
+
+            innerParentChildrenMap.setChildIdentifiers(finalKids);
+            setParentChildMap.set(true);
+
+        });
+
+        if (!setParentChildMap.get()) {
             ParentChildrenMap parentChildrenMap = new ParentChildrenMap();
             parentChildrenMap.setIdentifier(parentStringType);
             parentChildrenMap.setChildIdentifiers(kids);
@@ -117,90 +98,86 @@ public class Tree extends Type implements ICompositeType {
         }
     }
 
+    private List<StringType> getChildrenIdsByParentId(String parentId) {
+        Optional<List<StringType>> kidsOptional = parentChildren.parallelStream().filter(parentChildrenMap -> parentChildrenMap != null
+                && parentChildrenMap.getIdentifier() != null
+                && StringUtils.isNotBlank(parentChildrenMap.getIdentifier().getValue())
+                && parentChildrenMap
+                .getIdentifier()
+                .getValue()
+                .equals(parentId)).map(ParentChildrenMap::getChildIdentifiers).filter(Objects::nonNull).findFirst();
+        return kidsOptional.orElse(null);
+    }
+
     public void addNode(String id, String label, Location node, String parentId) {
         if (listOfNodes == null) {
             listOfNodes = new SingleTreeNode();
         }
 
-        // if node exists we should break since user should write optimized code and also tree can
-        // not have duplicates
-        if (hasNode(id)) {
-            throw new IllegalArgumentException("Node with ID " + id + " already exists in tree");
-        }
+        // We only add node if it doesn't already exist, else log as an exception
+        TreeNode treenode = getNode(id);
 
-        TreeNode treeNode = makeNode(id, label, node, parentId);
+        if (treenode == null) {
+            TreeNode treeNode = makeNode(id, null, label, node, parentId);
 
-        if (parentId != null) {
-            addToParentChildRelation(parentId, id);
+            if (parentId != null) {
 
-            TreeNode parentNode = getNode(parentId);
+                addToParentChildRelation(parentId, id);
+                TreeNode parentNode = getNode(parentId);
 
-            // if parent exists add to it otherwise add as root for now
-            if (parentNode != null) {
-                parentNode.addChild(treeNode);
-            } else {
-                // if no parent exists add it as root node
-                String idString = (String) id;
-                if (idString.contains(SLASH_UNDERSCORE)) {
-                    idString = idString.substring(0, idString.indexOf(SLASH_UNDERSCORE));
+                // if parent exists add to it otherwise add as root for now
+                if (parentNode != null) {
+                    parentNode.addChild(treeNode);
+                } else {
+                    // if no parent exists add it as root node
+                    SingleTreeNode singleTreeNode = getSingleTreeNode(id, treeNode);
+                    listOfNodes = singleTreeNode;
                 }
-                SingleTreeNode singleTreeNode = new SingleTreeNode();
-                StringType treeNodeId = new StringType();
-                treeNodeId.setValue(idString);
-                singleTreeNode.setTreeNodeId(treeNodeId);
-                singleTreeNode.setTreeNode(treeNode);
+            } else {
+                // if no parent add it as root node
+                SingleTreeNode singleTreeNode = getSingleTreeNode(id, treeNode);
                 listOfNodes = singleTreeNode;
             }
-        } else {
-            // if no parent add it as root node
-            String idString = id;
-            if (idString.contains(SLASH_UNDERSCORE)) {
-                idString = idString.substring(0, idString.indexOf(SLASH_UNDERSCORE));
-            }
 
-            SingleTreeNode singleTreeNode = new SingleTreeNode();
-            StringType treeNodeId = new StringType();
-            treeNodeId.setValue(idString);
-            singleTreeNode.setTreeNodeId(treeNodeId);
-            singleTreeNode.setTreeNode(treeNode);
-            listOfNodes = singleTreeNode;
+        } else {
+            throw new IllegalArgumentException("Node with ID " + id + " already exists in tree");
         }
     }
 
-    private TreeNode makeNode(String id, String label, Location node, String parentId) {
-        TreeNode treenode = getNode(id);
+    private static SingleTreeNode getSingleTreeNode(String id, TreeNode treeNode) {
+        String idString = id;
+        idString = Utils.cleanIdString(idString);
+        SingleTreeNode singleTreeNode = new SingleTreeNode();
+        StringType treeNodeId = new StringType();
+        treeNodeId.setValue(idString);
+        singleTreeNode.setTreeNodeId(treeNodeId);
+        singleTreeNode.setTreeNode(treeNode);
+        return singleTreeNode;
+    }
+
+    private TreeNode makeNode(String currentNodeId, TreeNode treenode, String label, Location node, String parentId) {
         if (treenode == null) {
             treenode = new TreeNode();
             StringType nodeId = new StringType();
-            String idString = (String) id;
-            if (idString.contains(SLASH_UNDERSCORE)) {
-                idString = idString.substring(0, idString.indexOf(SLASH_UNDERSCORE));
-            }
-            nodeId.setValue((String) idString);
+            String idString = Utils.cleanIdString(currentNodeId);
+            nodeId.setValue(idString);
             treenode.setNodeId(nodeId);
             StringType labelString = new StringType();
             labelString.setValue(label);
             treenode.setLabel(labelString);
             treenode.setNode(node);
             StringType parentIdString = new StringType();
-            String parentIdStringVar = parentId;
-
-            if (parentIdStringVar != null && parentIdStringVar.contains(SLASH_UNDERSCORE)) {
-                parentIdStringVar =
-                        parentIdStringVar.substring(0, parentIdStringVar.indexOf(SLASH_UNDERSCORE));
-            }
+            String parentIdStringVar = Utils.cleanIdString(parentId);
             parentIdString.setValue(parentIdStringVar);
             treenode.setParent(parentIdString);
         }
         return treenode;
     }
 
+    @Nullable
     public TreeNode getNode(String id) {
         // Check if id is any root node
-        String idString = id;
-        if (idString != null && idString.contains(SLASH_UNDERSCORE)) {
-            idString = idString.substring(0, idString.indexOf(SLASH_UNDERSCORE));
-        }
+        String idString = Utils.cleanIdString(id);
 
         if (listOfNodes.getTreeNodeId() != null
                 && StringUtils.isNotBlank(listOfNodes.getTreeNodeId().getValue())
@@ -213,10 +190,6 @@ public class Tree extends Type implements ICompositeType {
             }
         }
         return null;
-    }
-
-    public boolean hasNode(String id) {
-        return getNode(id) != null;
     }
 
     public SingleTreeNode getListOfNodes() {
