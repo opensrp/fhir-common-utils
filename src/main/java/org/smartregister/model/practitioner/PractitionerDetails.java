@@ -20,7 +20,6 @@ import ca.uhn.fhir.model.api.annotation.Description;
 import ca.uhn.fhir.model.api.annotation.ResourceDef;
 import ca.uhn.fhir.model.api.annotation.SearchParamDefinition;
 import ca.uhn.fhir.rest.gclient.TokenClientParam;
-import ca.uhn.fhir.rest.param.SpecialParam;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Practitioner;
 import org.hl7.fhir.r4.model.ResourceType;
@@ -29,7 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @ResourceDef(
-        name = "practitioner-details",
+        name = "PractitionerDetail",
         profile = "http://hl7.org/fhir/profiles/custom-resource")
 public class PractitionerDetails extends Practitioner {
 
