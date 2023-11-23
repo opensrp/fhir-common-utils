@@ -25,12 +25,9 @@ import org.hl7.fhir.r4.model.StringType;
 import org.hl7.fhir.r4.model.Type;
 
 import java.util.List;
-import java.util.logging.Logger;
 
 @DatatypeDef(name = "LocationHierarchyTree")
 public class LocationHierarchyTree extends Type implements ICompositeType {
-
-    private static final Logger logger = Logger.getLogger(LocationHierarchyTree.class.getSimpleName());
     @Child(name = "locationsHierarchy")
     private Tree locationsHierarchy;
 
