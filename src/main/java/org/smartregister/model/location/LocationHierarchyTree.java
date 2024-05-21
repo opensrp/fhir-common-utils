@@ -23,8 +23,10 @@ import org.hl7.fhir.instance.model.api.ICompositeType;
 import org.hl7.fhir.r4.model.Location;
 import org.hl7.fhir.r4.model.StringType;
 import org.hl7.fhir.r4.model.Type;
+import org.smartregister.utils.Constants;
 
 import java.util.List;
+import java.util.StringTokenizer;
 
 @DatatypeDef(name = "LocationHierarchyTree")
 public class LocationHierarchyTree extends Type implements ICompositeType {
@@ -37,7 +39,8 @@ public class LocationHierarchyTree extends Type implements ICompositeType {
 
     public void addLocation(Location location) {
         StringType idString = new StringType();
-        idString.setValue(location.getId());
+        String locationId = extractLocationId(location);
+        idString.setValue(locationId);
         if (location.getPartOf() == null || StringUtils.isEmpty(location.getPartOf().getReference())) {
             locationsHierarchy.addNode(idString.getValue(), location.getName(), location, null);
         } else {
@@ -47,6 +50,18 @@ public class LocationHierarchyTree extends Type implements ICompositeType {
             locationsHierarchy.addNode(
                     idString.getValue(), location.getName(), location, parentId.getValue());
         }
+    }
+
+    private static String extractLocationId(Location location) {
+        String locationId = location.getId();
+        StringTokenizer tokenizer = new StringTokenizer(locationId, Constants.FORWARD_SLASH);
+        while (tokenizer.hasMoreTokens()) {
+            String token = tokenizer.nextToken();
+            if (Constants.LOCATION.equals(token) && tokenizer.hasMoreTokens()) {
+                return token + Constants.FORWARD_SLASH + tokenizer.nextToken();
+            }
+        }
+        return locationId;
     }
 
     /**
