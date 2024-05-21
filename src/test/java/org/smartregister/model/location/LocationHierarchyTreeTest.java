@@ -223,6 +223,27 @@ public class LocationHierarchyTreeTest {
                         .getValue());
     }
 
+    @Test
+    public void testAddLocationWithMalformedIdUsesCorrectId() {
+        Location location = new Location();
+        location.setId("http://test-server/fhir/Location/1/_history/3");
+        location.setName("Test Location");
+        Reference partOfReference = new Reference();
+        partOfReference.setReference("");
+        location.setPartOf(partOfReference);
+        LocationHierarchyTree locationHierarchyTree = new LocationHierarchyTree();
+        locationHierarchyTree.addLocation(location);
+
+        Tree tree = locationHierarchyTree.getLocationsHierarchy();
+        assertNotNull(tree);
+        assertNotNull(tree.getTree());
+        assertEquals("Location/1", tree.getTree().getTreeNodeId().getValue());
+        assertEquals("Location/1", tree.getTree().getTreeNode().getNodeId().getValue());
+        assertEquals("Test Location", tree.getTree().getTreeNode().getLabel().getValue());
+        assertNull(tree.getTree().getTreeNode().getParent().getValue());
+        assertEquals(0, tree.getTree().getTreeNode().getChildren().size());
+    }
+
     private static List<Location> getLocationList() {
         Location location1 = new Location();
         location1.setId("Location/1");
