@@ -27,17 +27,6 @@ public class LocationHelper {
   private static final Logger logger =
       LoggerFactory.getLogger(LocationHelper.class);
 
-  private static IGenericClient r4FHIRClient = null;
-
-  public LocationHelper(IGenericClient fhirClient) {
-    r4FHIRClient = fhirClient;
-  }
-
-  private static IGenericClient getFhirClientForR4() {
-    return r4FHIRClient;
-  }
-
-
   // Custom class to pair a Location with its lineage ancestors
   static class LocationWithTags {
     Location location;
@@ -49,15 +38,14 @@ public class LocationHelper {
     }
   }
 
-  public static void updateLocationLineage(String locationId) {
-    IGenericClient client = getFhirClientForR4();
+  public static Location updateLocationLineage(IGenericClient client, String locationId) {
     Queue<LocationWithTags> locationsQueue = new LinkedList<>();
 
-    Location rootLocation = client.read().resource(Location.class).withId(locationId).execute();
+    Location location = client.read().resource(Location.class).withId(locationId).execute();
     List<String> ancestorIds = new ArrayList<>();
 
-    if (rootLocation.hasPartOf() && rootLocation.getPartOf().hasReference()) {
-      String parentLocationId = rootLocation.getPartOf().getReferenceElement().getIdPart();
+    if (location.hasPartOf() && location.getPartOf().hasReference()) {
+      String parentLocationId = location.getPartOf().getReferenceElement().getIdPart();
       Location parentLocation = client.read().resource(Location.class).withId(parentLocationId).execute();
 
       ancestorIds = parentLocation.getMeta().getTag().stream()
@@ -66,28 +54,17 @@ public class LocationHelper {
           .collect(Collectors.toList());
 
       ancestorIds.add(parentLocationId);
-
-      List<Coding> newTags = rootLocation.getMeta().getTag().stream()
-          .filter(tag -> !Constants.DEFAULT_LOCATION_LINEAGE_TAG_URL.equals(tag.getSystem()))
-          .collect(Collectors.toList());
-
-      // Add new tags with updated ancestry
-      for (String tag : ancestorIds) {
-        newTags.add(new Coding()
-            .setSystem(Constants.DEFAULT_LOCATION_LINEAGE_TAG_URL)
-            .setCode(tag));
-      }
-
-      rootLocation.getMeta().setTag(newTags);
-      client.update().resource(rootLocation).execute();
+      client.update().resource(location).execute();
     }
 
-    locationsQueue.add(new LocationWithTags(rootLocation, ancestorIds));
+    locationsQueue.add(new LocationWithTags(location, ancestorIds));
 
     while (!locationsQueue.isEmpty()) {
-      LocationWithTags current = locationsQueue.poll();
-      Location currentLocation = current.location;
-      List<String> currentAncestorIds = new ArrayList<>(current.ancestorIds);
+      LocationWithTags currentLocationWithTags = locationsQueue.poll();
+      Location currentLocation = currentLocationWithTags.location;
+      String currentLocationId = currentLocation.getIdElement().getIdPart();
+      List<String> currentAncestorIds = new ArrayList<>(currentLocationWithTags.ancestorIds);
+      logger.info("Adding lineage tags to Location Id : {}",  currentLocationId);
 
       List<Coding> newTags = currentLocation.getMeta().getTag().stream()
           .filter(tag -> !Constants.DEFAULT_LOCATION_LINEAGE_TAG_URL.equals(tag.getSystem()))
@@ -101,13 +78,13 @@ public class LocationHelper {
       currentLocation.getMeta().setTag(newTags);
       client.update().resource(currentLocation).execute();
 
-      currentAncestorIds.add(currentLocation.getIdElement().getIdPart());
+      currentAncestorIds.add(currentLocationId);
 
       IQuery<IBaseBundle> query =
           client.search()
               .forResource(Location.class)
               .where(new ReferenceClientParam(Location.SP_PARTOF)
-                  .hasAnyOfIds(currentLocation.getIdElement().getIdPart()));
+                  .hasAnyOfIds(currentLocationId));
 
       Bundle childLocationBundle = query.usingStyle(SearchStyleEnum.POST)
           .count(100)
@@ -115,13 +92,14 @@ public class LocationHelper {
           .execute();
 
       if (childLocationBundle != null) {
-        fetchAllBundlePagesAndInject(r4FHIRClient, childLocationBundle);
+        fetchAllBundlePagesAndInject(client, childLocationBundle);
         for (Bundle.BundleEntryComponent childLocationEntry : childLocationBundle.getEntry()) {
           Location childLocation = (Location) childLocationEntry.getResource();
           locationsQueue.add(new LocationWithTags(childLocation, currentAncestorIds));
         }
       }
     }
+    return location;
   }
 
   /**
