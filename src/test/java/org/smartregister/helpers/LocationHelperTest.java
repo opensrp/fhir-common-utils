@@ -13,7 +13,7 @@ import org.smartregister.utils.Constants;
 public class LocationHelperTest {
 
   @Test
-  public void testUpdateLocationTagsWithoutMocking() {
+  public void testUpdateLocationTags() {
     Location location = new Location();
     Assert.assertTrue(location.getMeta().getTag().isEmpty());
 
