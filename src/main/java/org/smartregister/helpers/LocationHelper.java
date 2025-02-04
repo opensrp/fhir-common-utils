@@ -16,6 +16,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.smartregister.utils.Constants;
 
+import com.google.common.annotations.VisibleForTesting;
+
 import ca.uhn.fhir.rest.api.SearchStyleEnum;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.fhir.rest.client.impl.GenericClient;
@@ -62,7 +64,9 @@ public class LocationHelper {
     return location;
   }
 
-  private static List<String> getParentLocationLineage(IGenericClient client, Location location) {
+  @VisibleForTesting
+  protected static List<String> getParentLocationLineage(
+      IGenericClient client, Location location) {
     if (!location.hasPartOf() || !location.getPartOf().hasReference()) {
       return new ArrayList<>();
     }
@@ -85,7 +89,8 @@ public class LocationHelper {
     return ancestorIds;
   }
 
-  private static void updateLocationTags(
+  @VisibleForTesting
+  protected static void updateLocationTags(
       IGenericClient client, Location location, List<String> ancestorIds) {
     logger.info("Adding lineage tags to Location Id : {}", location.getIdElement().getIdPart());
 

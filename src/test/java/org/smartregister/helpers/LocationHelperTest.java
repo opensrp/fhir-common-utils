@@ -1,45 +1,81 @@
 package org.smartregister.helpers;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.stream.Collectors;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
-import org.hl7.fhir.r4.model.Coding;
+import java.util.Collections;
+
+import org.hl7.fhir.instance.model.api.IBaseResource;
+import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Location;
-import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
-import org.smartregister.utils.Constants;
+import org.mockito.Mockito;
+import org.mockito.MockitoAnnotations;
+import org.mockito.internal.stubbing.defaultanswers.ReturnsDeepStubs;
+
+import ca.uhn.fhir.rest.api.SearchStyleEnum;
+import ca.uhn.fhir.rest.client.api.IGenericClient;
+import ca.uhn.fhir.rest.gclient.ICriterion;
+import ca.uhn.fhir.rest.gclient.IQuery;
+import ca.uhn.fhir.rest.gclient.IRead;
+import ca.uhn.fhir.rest.gclient.IReadExecutable;
+import ca.uhn.fhir.rest.gclient.IReadTyped;
+import ca.uhn.fhir.rest.gclient.IUntypedQuery;
 
 public class LocationHelperTest {
 
+  IGenericClient client;
+
+  @Before
+  public void setUp() {
+    MockitoAnnotations.initMocks(this);
+    client = mock(IGenericClient.class, new ReturnsDeepStubs());
+  }
+
   @Test
-  public void testUpdateLocationTags() {
+  public void testUpdateLocationLineage() {
     Location location = new Location();
-    Assert.assertTrue(location.getMeta().getTag().isEmpty());
+    location.setId("location1");
+    location.setPartOf(null);
 
-    List<String> ancestorIds = Arrays.asList("location-ancestor", "location-2");
+    Location childLocation = new Location();
+    childLocation.setId("location2");
+    childLocation.setPartOf(new org.hl7.fhir.r4.model.Reference("Location/location1"));
 
-    List<Coding> newTags =
-        location.getMeta().getTag().stream()
-            .filter(
-                tag ->
-                    !Constants.DEFAULT_LOCATION_LINEAGE_TAG_URL.equals(
-                        tag.getSystem()))
-            .collect(Collectors.toList());
+    Bundle childLocationBundle = new Bundle();
+    Bundle.BundleEntryComponent entry = new Bundle.BundleEntryComponent();
+    entry.setResource(childLocation);
+    childLocationBundle.setEntry(Collections.singletonList(entry));
 
-    for (String tag : ancestorIds) {
-      newTags.add(
-          new Coding()
-              .setSystem(Constants.DEFAULT_LOCATION_LINEAGE_TAG_URL)
-              .setCode(tag));
-    }
-    location.getMeta().setTag(newTags);
+    IRead iReadMock = mock(IRead.class);
+    IReadTyped<IBaseResource> iReadTypedMock = mock(IReadTyped.class);
+    IReadExecutable<Location> iReadExecutableMock = mock(IReadExecutable.class);
 
-    Assert.assertFalse(location.getMeta().getTag().isEmpty());
+    IUntypedQuery<Location> iUntypedQueryMock = mock(IUntypedQuery.class);
+    IQuery<Location> iQueryMock = mock(IQuery.class);
 
-    List<Coding> tags = location.getMeta().getTag();
-    Assert.assertEquals(2, tags.size());
-    Assert.assertTrue(tags.stream().anyMatch(tag -> tag.getCode().equals("location-ancestor")));
-    Assert.assertTrue(tags.stream().anyMatch(tag -> tag.getCode().equals("location-2")));
+    Mockito.doReturn(iReadMock).when(client).read();
+    Mockito.doReturn(iReadTypedMock).when(iReadMock).resource(Location.class);
+    Mockito.doReturn(iReadExecutableMock).when(iReadTypedMock).withId("location1");
+    Mockito.doReturn(location).when(iReadExecutableMock).execute();
+
+    Mockito.doReturn(iUntypedQueryMock).when(client).search();
+    Mockito.doReturn(iQueryMock).when(iUntypedQueryMock).forResource(Location.class);
+    Mockito.doReturn(iQueryMock).when(iQueryMock).where(Mockito.any(ICriterion.class));
+    Mockito.doReturn(iQueryMock).when(iQueryMock).usingStyle(SearchStyleEnum.POST);
+    Mockito.doReturn(iQueryMock).when(iQueryMock).count(100);
+    Mockito.doReturn(iQueryMock).when(iQueryMock).returnBundle(Bundle.class);
+    Mockito.doReturn(childLocationBundle, (Bundle) null).when(iQueryMock).execute();
+
+    Location result = LocationHelper.updateLocationLineage(client, "location1");
+
+    assertNotNull(result);
+    assertEquals("location1", result.getIdElement().getIdPart());
+    verify(client, times(1)).read();
+    verify(client, times(2)).search();
   }
 }
