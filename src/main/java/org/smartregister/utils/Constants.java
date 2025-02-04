@@ -49,4 +49,5 @@ public interface Constants {
     String CODE = "code";
     String MEMBER = "member";
     String GROUP = "Group";
+    String DEFAULT_LOCATION_LINEAGE_TAG_URL = "http://smartregister.org/CodeSystem/location-lineage";
 }
