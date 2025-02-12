@@ -50,15 +50,17 @@ public class LocationHelper {
       LocationWithTags currentLocationWithTags = locationsQueue.poll();
       Location currentLocation = currentLocationWithTags.location;
       String currentLocationId = currentLocation.getIdElement().getIdPart();
+      List<String> currentAncestorIds = currentLocationWithTags.ancestorIds;
 
       updateLocationTags(client, currentLocation, currentLocationWithTags.ancestorIds);
       List<Location> childLocations = fetchChildLocations(client, currentLocationId);
 
+      currentAncestorIds.add(currentLocationId);
       for (Location childLocation : childLocations) {
         locationsQueue.add(
             new LocationWithTags(
                 childLocation,
-                new ArrayList<>(currentLocationWithTags.ancestorIds)));
+                new ArrayList<>(currentAncestorIds)));
       }
     }
     return location;
