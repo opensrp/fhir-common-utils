@@ -70,7 +70,12 @@ jobs:
         run: mvn clean test
 
       - name: Build and deploy to Maven Central
-        run: mvn clean deploy --no-transfer-progress
+        run: |
+          if [[ "${{ steps.release-type.outputs.NEEDS_SIGNING }}" == "true" ]]; then
+            mvn clean deploy --no-transfer-progress
+          else
+            mvn clean deploy --no-transfer-progress -Dgpg.skip=true
+          fi
         env:
           GPG_PASSPHRASE: ${{ steps.release-type.outputs.NEEDS_SIGNING == 'true' && secrets.GPG_PASSPHRASE || '' }}
 
