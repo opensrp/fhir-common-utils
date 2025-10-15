@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                              http://maven.apache.org/xsd/settings-1.0.0.xsd">
+  
+  <!-- 
+    This is a template for Maven settings.xml file for Maven Central publishing.
+    
+    To use this template:
+    1. Copy this file to settings.xml
+    2. Replace the placeholders with your actual Sonatype OSSRH credentials
+    3. Encode the file as base64: base64 -i settings.xml
+    4. Add the base64-encoded content as the SETTINGS_XML secret in GitHub
+  -->
+  
+  <servers>
+    <server>
+      <id>ossrh</id>
+      <username>YOUR_SONATYPE_USERNAME</username>
+      <password>YOUR_SONATYPE_PASSWORD</password>
+    </server>
+  </servers>
+  
+  <profiles>
+    <profile>
+      <id>gpg</id>
+      <properties>
+        <gpg.executable>gpg</gpg.executable>
+        <gpg.passphrase>YOUR_GPG_PASSPHRASE</gpg.passphrase>
+      </properties>
+    </profile>
+  </profiles>
+</settings>
