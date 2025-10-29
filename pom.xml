@@ -141,6 +141,8 @@
                     <docencoding>UTF-8</docencoding>
                     <failOnError>false</failOnError>
                     <quiet>true</quiet>
+                    <additionalJOption>-Xdoclint:none</additionalJOption>
+                    <includeDependencySources>false</includeDependencySources>
                 </configuration>
                 <executions>
                     <execution>
@@ -149,6 +151,9 @@
                         <goals>
                             <goal>jar</goal>
                         </goals>
+                        <configuration>
+                            <skip>false</skip>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

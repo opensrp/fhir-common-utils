@@ -72,12 +72,19 @@ jobs:
       - name: Build and deploy to Maven Central
         run: |
           if [[ "${{ steps.release-type.outputs.NEEDS_SIGNING }}" == "true" ]]; then
-            mvn clean deploy --no-transfer-progress
+            mvn clean package deploy --no-transfer-progress
           else
-            mvn clean deploy --no-transfer-progress -Dgpg.skip=true
+            mvn clean package deploy --no-transfer-progress -Dgpg.skip=true
           fi
         env:
           GPG_PASSPHRASE: ${{ steps.release-type.outputs.NEEDS_SIGNING == 'true' && secrets.GPG_PASSPHRASE || '' }}
+
+      - name: Verify javadoc jar was created
+        if: always()
+        run: |
+          echo "Checking for javadoc jar..."
+          find target -name "*javadoc*.jar" || echo "WARNING: Javadoc jar not found after deploy"
+          ls -la target/*.jar || true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
