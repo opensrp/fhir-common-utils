@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+\.[0-9]+\.[0-9]+"
+      - "v[0-9]+\.[0-9]+\.[0-9]+-RC[0-9]+"
+      - "v[0-9]+\.[0-9]+\.[0-9]+-SNAPSHOT"
+      - "v[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z]+-SNAPSHOT"
+      - "v[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z]+-[0-9A-Za-z]+-SNAPSHOT"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # create GitHub Releases
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Set up Temurin JDK 11 (Maven, Central auth, and GPG)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "11"
+          cache: maven
+          server-id: central
+          server-username: ${{ secrets.CENTRAL_USERNAME }}   # Sonatype Central user token name
+          server-password: ${{ secrets.CENTRAL_PASSWORD }}   # Sonatype Central user token secret
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}    # ASCII-armored *secret* key
+          gpg-passphrase:  ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Determine release type (snapshot vs production)
+        id: reltype
+        run: |
+          if [[ "${GITHUB_REF}" == *"-SNAPSHOT" ]]; then
+            echo "TYPE=snapshot" >> "$GITHUB_OUTPUT"
+          else
+            echo "TYPE=production" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set project version from tag
+        run: |
+          mvn -B -ntp versions:set -DnewVersion="${{ steps.version.outputs.VERSION }}"
+          mvn -B -ntp versions:commit
+
+      - name: Build & test (signs at verify)
+        run: mvn -B -ntp clean verify
+        env:
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Deploy to Sonatype Central
+        run: mvn -B -ntp deploy -DskipTests
+        env:
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Verify artifacts & signatures
+        if: always()
+        run: |
+          echo "Artifacts in target/:"
+          ls -l target || true
+          echo
+          echo "Signature files in target/:"
+          find target -maxdepth 1 -type f -name "*.asc" -print || true
+          echo
+          echo "Local repo contents for this version:"
+          ART="$HOME/.m2/repository/org/smartregister/fhir-common-utils/${{ steps.version.outputs.VERSION }}"
+          if [ -d "$ART" ]; then ls -la "$ART"; else echo "Not found: $ART"; fi
+
+      - name: Upload build outputs (for debugging)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: target-${{ steps.version.outputs.VERSION }}
+          path: |
+            target/*.jar
+            target/*.pom
+            target/*.asc
+            target/*-sources.jar
+            target/*-javadoc.jar
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ steps.reltype.outputs.TYPE == 'snapshot'
+            && format('Snapshot {0}', steps.version.outputs.VERSION)
+            || format('Release {0}', steps.version.outputs.VERSION) }}
+          draft: false
+          prerelease: ${{ steps.reltype.outputs.TYPE == 'snapshot' || contains(github.ref, 'RC') || contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
