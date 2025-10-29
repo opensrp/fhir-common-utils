@@ -17,126 +17,26 @@ jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # needed to create GitHub Releases
+      contents: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # full history so tags are available
+          fetch-depth: 0
           submodules: recursive
 
-      - name: Set up Temurin JDK 11
+      - name: Set up Temurin JDK 11 (Maven, Central auth, and GPG)
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "11"
           cache: "maven"
-
-      - name: Configure GPG for batch mode (must be FIRST)
-        run: |
-          # Configure GPG BEFORE importing keys to prevent pinentry issues
-          mkdir -p ~/.gnupg
-
-          # Fix permissions on .gnupg directory (required for GPG security)
-          chmod 700 ~/.gnupg
-
-          # Configure gpg.conf for batch mode
-          echo "pinentry-mode loopback" > ~/.gnupg/gpg.conf
-          echo "batch" >> ~/.gnupg/gpg.conf
-          echo "yes" >> ~/.gnupg/gpg.conf
-          echo "no-tty" >> ~/.gnupg/gpg.conf
-          chmod 600 ~/.gnupg/gpg.conf
-
-          # Configure gpg-agent to use loopback (no pinentry GUI)
-          echo "pinentry-mode loopback" > ~/.gnupg/gpg-agent.conf
-          echo "default-cache-ttl 600" >> ~/.gnupg/gpg-agent.conf
-          echo "max-cache-ttl 7200" >> ~/.gnupg/gpg-agent.conf
-          chmod 600 ~/.gnupg/gpg-agent.conf
-
-          # Kill any existing gpg-agent (ignore errors if not running)
-          gpg-connect-agent killagent /bye 2>/dev/null || true
-
-          echo "✅ GPG configured for batch mode (no pinentry)"
-
-      - name: Configure Maven settings.xml and import GPG key
-        run: |
-          # Ensure .m2 directory exists
-          mkdir -p ~/.m2
-
-          # Decode and install settings.xml (contains Central credentials and GPG passphrase)
-          if [ -z "${{ secrets.SETTINGS_XML }}" ]; then
-            echo "❌ Error: SETTINGS_XML secret is empty or not set"
-            exit 1
-          fi
-
-          # Decode settings.xml
-          if echo "${{ secrets.SETTINGS_XML }}" | base64 -d > ~/.m2/settings.xml 2>/dev/null; then
-            chmod 600 ~/.m2/settings.xml
-            echo "✅ Settings.xml decoded successfully"
-            # Verify it contains expected elements
-            if grep -q "<settings" ~/.m2/settings.xml && grep -q "<server" ~/.m2/settings.xml; then
-              echo "✅ Settings.xml structure verified"
-            else
-              echo "⚠️  Warning: Settings.xml might be malformed"
-            fi
-          else
-            echo "❌ Error: Failed to decode SETTINGS_XML. Make sure it's base64-encoded."
-            echo "To encode on Linux/Mac: base64 -i settings.xml"
-            echo "Or: cat settings.xml | base64"
-            exit 1
-          fi
-
-          # Import GPG private key (handle both base64-encoded and ASCII-armored formats)
-          if [ -z "${{ secrets.GPG_PRIVATE_KEY }}" ]; then
-            echo "❌ Error: GPG_PRIVATE_KEY secret is empty or not set"
-            exit 1
-          fi
-
-          GPG_KEY="${{ secrets.GPG_PRIVATE_KEY }}"
-
-          # Try to detect if it's base64 or already ASCII-armored
-          # Check if it starts with -----BEGIN (ASCII-armored format)
-          if echo "$GPG_KEY" | head -n 1 | grep -q "BEGIN.*PRIVATE"; then
-            # Already ASCII-armored, use directly
-            echo "Detected ASCII-armored GPG key"
-            # Import with batch mode (gpg-agent errors are warnings, not fatal)
-            echo "$GPG_KEY" | gpg --batch --yes --import 2>&1 | grep -v -E "(gpg-agent|obsolete)" || true
-          else
-            # Try base64 decode first
-            echo "Attempting base64 decode..."
-            DECODED=$(echo "$GPG_KEY" | base64 -d 2>/dev/null)
-            if [ $? -eq 0 ] && echo "$DECODED" | head -n 1 | grep -q "BEGIN.*PRIVATE"; then
-              echo "Detected base64-encoded GPG key"
-              echo "$DECODED" | gpg --batch --yes --import 2>&1 | grep -v -E "(gpg-agent|obsolete)" || true
-            else
-              echo "❌ Error: GPG_PRIVATE_KEY format not recognized"
-              echo "Expected either:"
-              echo "  1. ASCII-armored key (starts with -----BEGIN PGP PRIVATE KEY BLOCK-----)"
-              echo "  2. Base64-encoded ASCII-armored key"
-              echo ""
-              echo "To export and encode:"
-              echo "  gpg --export-secret-keys --armor YOUR_KEY_ID | base64"
-              exit 1
-            fi
-          fi
-
-          # Verify import succeeded by checking if secret keys exist
-          # (gpg-agent errors are non-fatal warnings - the key imports successfully)
-          sleep 2  # Give GPG time to finish processing
-
-          # Check if any secret keys exist (simple and robust)
-          if gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep -q "^sec"; then
-            # Get key count using wc -l which is more reliable
-            SECRET_COUNT=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep "^sec" | wc -l | xargs)
-            echo "✅ GPG key imported successfully (${SECRET_COUNT} secret key(s) available)"
-            echo "ℹ️  Note: gpg-agent warnings are non-fatal - the key imports successfully"
-          else
-            echo "❌ Error: Failed to import GPG key - no secret keys found"
-            echo "Debug: Listing GPG status..."
-            gpg --list-secret-keys --keyid-format SHORT 2>&1 || true
-            exit 1
-          fi
+          server-id: "central"
+          server-username: ${{ secrets.CENTRAL_USERNAME }}
+          server-password: ${{ secrets.CENTRAL_PASSWORD }}
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Extract version from tag
         id: version
@@ -156,62 +56,15 @@ jobs:
           mvn -B -ntp versions:set -DnewVersion="${{ steps.version.outputs.VERSION }}"
           mvn -B -ntp versions:commit
 
-      - name: Verify GPG passphrase is accessible
-        run: |
-          # Extract GPG passphrase from settings.xml for verification
-          if [ -f ~/.m2/settings.xml ]; then
-            GPG_PASS=$(grep -A 1 '<gpg.passphrase>' ~/.m2/settings.xml | tail -1 | sed 's/.*<gpg.passphrase>\(.*\)<\/gpg.passphrase>.*/\1/' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            if [ -n "$GPG_PASS" ] && [ "$GPG_PASS" != "YOUR_GPG_PASSPHRASE" ]; then
-              echo "✅ GPG passphrase found in settings.xml"
-              # Test GPG signing with a dummy file
-              echo "test" > /tmp/gpg-test.txt
-              if echo "$GPG_PASS" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --sign /tmp/gpg-test.txt 2>&1; then
-                echo "✅ GPG signing test successful"
-                rm -f /tmp/gpg-test.txt /tmp/gpg-test.txt.gpg
-              else
-                echo "⚠️  GPG signing test failed, but continuing..."
-                rm -f /tmp/gpg-test.txt /tmp/gpg-test.txt.gpg
-              fi
-            else
-              echo "⚠️  GPG passphrase not found or still has placeholder value"
-            fi
-          else
-            echo "❌ settings.xml not found!"
-            exit 1
-          fi
-
       - name: Build & test (signs at verify)
-        # Your POM signs at the 'verify' phase; keep tests on for releases.
-        # GPG passphrase comes from settings.xml profile
+        run: mvn -B -ntp clean verify
         env:
-          GPG_TTY: ""
-          GNUPGHOME: ~/.gnupg
-        run: |
-          # Ensure gpg-agent is completely killed and won't restart
-          gpg-connect-agent killagent /bye 2>/dev/null || true
-          sleep 1
-
-          # Verify GPG config is correct
-          echo "GPG configuration:"
-          cat ~/.gnupg/gpg.conf || echo "No gpg.conf found"
-          echo ""
-          cat ~/.gnupg/gpg-agent.conf || echo "No gpg-agent.conf found"
-          echo ""
-
-          # Run Maven build
-          mvn -B -ntp clean verify
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Deploy to Sonatype Central
-        # Central credentials and GPG passphrase come from settings.xml
+        run: mvn -B -ntp deploy -DskipTests
         env:
-          GPG_TTY: ""
-          GNUPGHOME: ~/.gnupg
-        run: |
-          # Ensure gpg-agent is completely killed and won't restart
-          gpg-connect-agent killagent /bye 2>/dev/null || true
-          sleep 1
-
-          mvn -B -ntp deploy -DskipTests
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Verify artifacts & signatures
         if: always()
