@@ -35,12 +35,73 @@ jobs:
 
       - name: Configure Maven settings.xml and GPG
         run: |
-          # Decode and install settings.xml (contains Central credentials and GPG passphrase)
-          echo "${{ secrets.SETTINGS_XML }}" | base64 --decode > ~/.m2/settings.xml
-          chmod 600 ~/.m2/settings.xml
+          # Ensure .m2 directory exists
+          mkdir -p ~/.m2
 
-          # Import GPG private key
-          echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 --decode | gpg --batch --yes --import
+          # Decode and install settings.xml (contains Central credentials and GPG passphrase)
+          if [ -z "${{ secrets.SETTINGS_XML }}" ]; then
+            echo "❌ Error: SETTINGS_XML secret is empty or not set"
+            exit 1
+          fi
+
+          # Decode settings.xml
+          if echo "${{ secrets.SETTINGS_XML }}" | base64 -d > ~/.m2/settings.xml 2>/dev/null; then
+            chmod 600 ~/.m2/settings.xml
+            echo "✅ Settings.xml decoded successfully"
+            # Verify it contains expected elements
+            if grep -q "<settings" ~/.m2/settings.xml && grep -q "<server" ~/.m2/settings.xml; then
+              echo "✅ Settings.xml structure verified"
+            else
+              echo "⚠️  Warning: Settings.xml might be malformed"
+            fi
+          else
+            echo "❌ Error: Failed to decode SETTINGS_XML. Make sure it's base64-encoded."
+            echo "To encode on Linux/Mac: base64 -i settings.xml"
+            echo "Or: cat settings.xml | base64"
+            exit 1
+          fi
+
+          # Import GPG private key (handle both base64-encoded and ASCII-armored formats)
+          if [ -z "${{ secrets.GPG_PRIVATE_KEY }}" ]; then
+            echo "❌ Error: GPG_PRIVATE_KEY secret is empty or not set"
+            exit 1
+          fi
+
+          GPG_KEY="${{ secrets.GPG_PRIVATE_KEY }}"
+
+          # Try to detect if it's base64 or already ASCII-armored
+          # Check if it starts with -----BEGIN (ASCII-armored format)
+          if echo "$GPG_KEY" | head -n 1 | grep -q "BEGIN.*PRIVATE"; then
+            # Already ASCII-armored, use directly
+            echo "Detected ASCII-armored GPG key"
+            echo "$GPG_KEY" | gpg --batch --yes --import 2>&1
+            IMPORT_STATUS=$?
+          else
+            # Try base64 decode first
+            echo "Attempting base64 decode..."
+            DECODED=$(echo "$GPG_KEY" | base64 -d 2>/dev/null)
+            if [ $? -eq 0 ] && echo "$DECODED" | head -n 1 | grep -q "BEGIN.*PRIVATE"; then
+              echo "Detected base64-encoded GPG key"
+              echo "$DECODED" | gpg --batch --yes --import 2>&1
+              IMPORT_STATUS=$?
+            else
+              echo "❌ Error: GPG_PRIVATE_KEY format not recognized"
+              echo "Expected either:"
+              echo "  1. ASCII-armored key (starts with -----BEGIN PGP PRIVATE KEY BLOCK-----)"
+              echo "  2. Base64-encoded ASCII-armored key"
+              echo ""
+              echo "To export and encode:"
+              echo "  gpg --export-secret-keys --armor YOUR_KEY_ID | base64"
+              exit 1
+            fi
+          fi
+
+          if [ $IMPORT_STATUS -eq 0 ]; then
+            echo "✅ GPG key imported successfully"
+          else
+            echo "❌ Error: Failed to import GPG key (exit code: $IMPORT_STATUS)"
+            exit 1
+          fi
 
       - name: Configure GPG for batch mode
         run: |
