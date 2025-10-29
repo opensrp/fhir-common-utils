@@ -33,7 +33,31 @@ jobs:
           java-version: "11"
           cache: "maven"
 
-      - name: Configure Maven settings.xml and GPG
+      - name: Configure GPG for batch mode (must be FIRST)
+        run: |
+          # Configure GPG BEFORE importing keys to prevent pinentry issues
+          mkdir -p ~/.gnupg
+
+          # Configure gpg.conf for batch mode
+          echo "pinentry-mode loopback" > ~/.gnupg/gpg.conf
+          echo "batch" >> ~/.gnupg/gpg.conf
+          echo "yes" >> ~/.gnupg/gpg.conf
+          echo "no-tty" >> ~/.gnupg/gpg.conf
+          chmod 600 ~/.gnupg/gpg.conf
+
+          # Configure gpg-agent to use loopback (no pinentry GUI)
+          echo "pinentry-mode loopback" > ~/.gnupg/gpg-agent.conf
+          echo "default-cache-ttl 600" >> ~/.gnupg/gpg-agent.conf
+          echo "max-cache-ttl 7200" >> ~/.gnupg/gpg-agent.conf
+          chmod 600 ~/.gnupg/gpg-agent.conf
+
+          # Kill any existing gpg-agent and restart with new config
+          gpg-connect-agent killagent /bye 2>/dev/null || true
+          gpg-connect-agent reloadagent /bye 2>/dev/null || true
+
+          echo "✅ GPG configured for batch mode (no pinentry)"
+
+      - name: Configure Maven settings.xml and import GPG key
         run: |
           # Ensure .m2 directory exists
           mkdir -p ~/.m2
@@ -74,6 +98,7 @@ jobs:
           if echo "$GPG_KEY" | head -n 1 | grep -q "BEGIN.*PRIVATE"; then
             # Already ASCII-armored, use directly
             echo "Detected ASCII-armored GPG key"
+            echo "$GPG_KEY" | gpg --batch --yes --passphrase-fd 0 --import 2>&1 || \
             echo "$GPG_KEY" | gpg --batch --yes --import 2>&1
             IMPORT_STATUS=$?
           else
@@ -103,30 +128,7 @@ jobs:
             exit 1
           fi
 
-      - name: Configure GPG for batch mode
-        run: |
-          # Ensure gpg-agent is configured for batch mode (no pinentry)
-          mkdir -p ~/.gnupg
-          echo "pinentry-mode loopback" > ~/.gnupg/gpg.conf
-          echo "batch" >> ~/.gnupg/gpg.conf
-          echo "yes" >> ~/.gnupg/gpg.conf
-          echo "no-tty" >> ~/.gnupg/gpg.conf
-          chmod 600 ~/.gnupg/gpg.conf
-
-          # Configure gpg-agent to not use pinentry
-          echo "pinentry-mode loopback" > ~/.gnupg/gpg-agent.conf
-          echo "default-cache-ttl 600" >> ~/.gnupg/gpg-agent.conf
-          echo "max-cache-ttl 7200" >> ~/.gnupg/gpg-agent.conf
-          chmod 600 ~/.gnupg/gpg-agent.conf
-
-          # Reload gpg-agent if running
-          gpg-connect-agent reloadagent /bye 2>/dev/null || true
-
-          # Verify GPG is configured correctly (without exposing sensitive info)
-          echo "GPG version:"
-          gpg --version | head -1
-          echo ""
-          # Check if keys exist without listing details (to avoid exposing email addresses)
+          # Verify GPG keys are available
           KEY_COUNT=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep -c "^sec" || echo "0")
           if [ "$KEY_COUNT" -gt 0 ]; then
             echo "✅ GPG keys configured ($KEY_COUNT key(s) available)"
@@ -153,14 +155,62 @@ jobs:
           mvn -B -ntp versions:set -DnewVersion="${{ steps.version.outputs.VERSION }}"
           mvn -B -ntp versions:commit
 
+      - name: Verify GPG passphrase is accessible
+        run: |
+          # Extract GPG passphrase from settings.xml for verification
+          if [ -f ~/.m2/settings.xml ]; then
+            GPG_PASS=$(grep -A 1 '<gpg.passphrase>' ~/.m2/settings.xml | tail -1 | sed 's/.*<gpg.passphrase>\(.*\)<\/gpg.passphrase>.*/\1/' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            if [ -n "$GPG_PASS" ] && [ "$GPG_PASS" != "YOUR_GPG_PASSPHRASE" ]; then
+              echo "✅ GPG passphrase found in settings.xml"
+              # Test GPG signing with a dummy file
+              echo "test" > /tmp/gpg-test.txt
+              if echo "$GPG_PASS" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --sign /tmp/gpg-test.txt 2>&1; then
+                echo "✅ GPG signing test successful"
+                rm -f /tmp/gpg-test.txt /tmp/gpg-test.txt.gpg
+              else
+                echo "⚠️  GPG signing test failed, but continuing..."
+                rm -f /tmp/gpg-test.txt /tmp/gpg-test.txt.gpg
+              fi
+            else
+              echo "⚠️  GPG passphrase not found or still has placeholder value"
+            fi
+          else
+            echo "❌ settings.xml not found!"
+            exit 1
+          fi
+
       - name: Build & test (signs at verify)
         # Your POM signs at the 'verify' phase; keep tests on for releases.
         # GPG passphrase comes from settings.xml profile
-        run: mvn -B -ntp clean verify
+        env:
+          GPG_TTY: ""
+          GNUPGHOME: ~/.gnupg
+        run: |
+          # Ensure gpg-agent is completely killed and won't restart
+          gpg-connect-agent killagent /bye 2>/dev/null || true
+          sleep 1
+
+          # Verify GPG config is correct
+          echo "GPG configuration:"
+          cat ~/.gnupg/gpg.conf || echo "No gpg.conf found"
+          echo ""
+          cat ~/.gnupg/gpg-agent.conf || echo "No gpg-agent.conf found"
+          echo ""
+
+          # Run Maven build
+          mvn -B -ntp clean verify
 
       - name: Deploy to Sonatype Central
         # Central credentials and GPG passphrase come from settings.xml
-        run: mvn -B -ntp deploy -DskipTests
+        env:
+          GPG_TTY: ""
+          GNUPGHOME: ~/.gnupg
+        run: |
+          # Ensure gpg-agent is completely killed and won't restart
+          gpg-connect-agent killagent /bye 2>/dev/null || true
+          sleep 1
+
+          mvn -B -ntp deploy -DskipTests
 
       - name: Verify artifacts & signatures
         if: always()
