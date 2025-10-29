@@ -17,26 +17,62 @@ jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # needed to create GitHub Releases
+      contents: write # needed to create GitHub Releases
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # full history so tags are available
+          fetch-depth: 0 # full history so tags are available
           submodules: recursive
 
-      - name: Set up Temurin JDK 11 (Maven, Central auth, and GPG)
+      - name: Set up Temurin JDK 11
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "11"
           cache: "maven"
-          server-id: "central"                            # matches <publishingServerId>
-          server-username: ${{ secrets.CENTRAL_USERNAME }} # Sonatype Central user token name
-          server-password: ${{ secrets.CENTRAL_PASSWORD }} # Sonatype Central user token password
-          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}  # ASCII-armored private key text
-          gpg-passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Configure Maven settings.xml and GPG
+        run: |
+          # Decode and install settings.xml (contains Central credentials and GPG passphrase)
+          echo "${{ secrets.SETTINGS_XML }}" | base64 --decode > ~/.m2/settings.xml
+          chmod 600 ~/.m2/settings.xml
+
+          # Import GPG private key
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 --decode | gpg --batch --yes --import
+
+      - name: Configure GPG for batch mode
+        run: |
+          # Ensure gpg-agent is configured for batch mode (no pinentry)
+          mkdir -p ~/.gnupg
+          echo "pinentry-mode loopback" > ~/.gnupg/gpg.conf
+          echo "batch" >> ~/.gnupg/gpg.conf
+          echo "yes" >> ~/.gnupg/gpg.conf
+          echo "no-tty" >> ~/.gnupg/gpg.conf
+          chmod 600 ~/.gnupg/gpg.conf
+
+          # Configure gpg-agent to not use pinentry
+          echo "pinentry-mode loopback" > ~/.gnupg/gpg-agent.conf
+          echo "default-cache-ttl 600" >> ~/.gnupg/gpg-agent.conf
+          echo "max-cache-ttl 7200" >> ~/.gnupg/gpg-agent.conf
+          chmod 600 ~/.gnupg/gpg-agent.conf
+
+          # Reload gpg-agent if running
+          gpg-connect-agent reloadagent /bye 2>/dev/null || true
+
+          # Verify GPG is configured correctly (without exposing sensitive info)
+          echo "GPG version:"
+          gpg --version | head -1
+          echo ""
+          # Check if keys exist without listing details (to avoid exposing email addresses)
+          KEY_COUNT=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep -c "^sec" || echo "0")
+          if [ "$KEY_COUNT" -gt 0 ]; then
+            echo "✅ GPG keys configured ($KEY_COUNT key(s) available)"
+          else
+            echo "⚠️  No GPG keys found"
+            exit 1
+          fi
 
       - name: Extract version from tag
         id: version
@@ -58,15 +94,12 @@ jobs:
 
       - name: Build & test (signs at verify)
         # Your POM signs at the 'verify' phase; keep tests on for releases.
+        # GPG passphrase comes from settings.xml profile
         run: mvn -B -ntp clean verify
-        env:
-          # Some gpg setups still expect this property explicitly:
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Deploy to Sonatype Central
+        # Central credentials and GPG passphrase come from settings.xml
         run: mvn -B -ntp deploy -DskipTests
-        env:
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Verify artifacts & signatures
         if: always()
@@ -100,8 +133,8 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ steps.reltype.outputs.TYPE == 'snapshot'
-                    && format('Snapshot {0}', steps.version.outputs.VERSION)
-                    || format('Release {0}', steps.version.outputs.VERSION) }}
+            && format('Snapshot {0}', steps.version.outputs.VERSION)
+            || format('Release {0}', steps.version.outputs.VERSION) }}
           draft: false
           prerelease: ${{ steps.reltype.outputs.TYPE == 'snapshot' || contains(github.ref, 'RC') || contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
           generate_release_notes: true
