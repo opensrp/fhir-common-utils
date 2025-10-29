@@ -9,16 +9,20 @@
     
     To use this template:
     1. Copy this file to settings.xml
-    2. Replace the placeholders with your actual Sonatype OSSRH credentials
+    2. Replace the placeholders with your actual Sonatype credentials
     3. Encode the file as base64: base64 -i settings.xml
     4. Add the base64-encoded content as the SETTINGS_XML secret in GitHub
+    
+    Note: With central-publishing-maven-plugin, both production and snapshot 
+    releases use the 'central' server ID with the new Central Publishing API.
   -->
   
   <servers>
+    <!-- For all releases via Central Publishing API -->
     <server>
-      <id>ossrh</id>
+      <id>central</id>
       <username>YOUR_SONATYPE_USERNAME</username>
-      <password>YOUR_SONATYPE_PASSWORD</password>
+      <password>YOUR_SONATYPE_PASSWORD_OR_TOKEN</password>
     </server>
   </servers>
   
