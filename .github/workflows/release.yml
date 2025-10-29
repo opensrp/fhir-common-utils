@@ -6,93 +6,104 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+"
       - "v[0-9]+.[0-9]+.[0-9]+-RC[0-9]+"
       - "v[0-9]+.[0-9]+.[0-9]+-SNAPSHOT"
-      - "v[0-9]+.[0-9]+.[0-9]+-[0-9a-zA-Z]+-SNAPSHOT"
-      - "v[0-9]+.[0-9]+.[0-9]+-[0-9a-zA-Z]+-[0-9a-zA-Z]+-SNAPSHOT"
+      - "v[0-9]+.[0-9]+.[0-9]+-[0-9A-Za-z]+-SNAPSHOT"
+      - "v[0-9]+.[0-9]+.[0-9]+-[0-9A-Za-z]+-[0-9A-Za-z]+-SNAPSHOT"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    steps:
-      - name: Cancel previous workflow runs
-        uses: styfle/cancel-workflow-action@0.9.1
-        with:
-          access_token: ${{ github.token }}
+    permissions:
+      contents: write  # needed to create GitHub Releases
 
-      - uses: actions/checkout@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
+          fetch-depth: 0   # full history so tags are available
           submodules: recursive
 
-      - name: Set up JDK 11
+      - name: Set up Temurin JDK 11 (Maven, Central auth, and GPG)
         uses: actions/setup-java@v4
         with:
-          java-version: "11"
           distribution: "temurin"
-
-      - name: Cache Maven packages
-        uses: actions/cache@v3
-        with:
-          path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-m2
+          java-version: "11"
+          cache: "maven"
+          server-id: "central"                            # matches <publishingServerId>
+          server-username: ${{ secrets.CENTRAL_USERNAME }} # Sonatype Central user token name
+          server-password: ${{ secrets.CENTRAL_PASSWORD }} # Sonatype Central user token password
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}  # ASCII-armored private key text
+          gpg-passphrase: ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Extract version from tag
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
-      - name: Determine release type
-        id: release-type
+      - name: Determine release type (snapshot vs production)
+        id: reltype
         run: |
-          if [[ "${{ github.ref }}" == *"-SNAPSHOT"* ]]; then
-            echo "TYPE=snapshot" >> $GITHUB_OUTPUT
-            echo "NEEDS_SIGNING=false" >> $GITHUB_OUTPUT
+          if [[ "${GITHUB_REF}" == *"-SNAPSHOT" ]]; then
+            echo "TYPE=snapshot" >> "$GITHUB_OUTPUT"
           else
-            echo "TYPE=production" >> $GITHUB_OUTPUT
-            echo "NEEDS_SIGNING=true" >> $GITHUB_OUTPUT
+            echo "TYPE=production" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Configure GPG (Production releases only)
-        if: steps.release-type.outputs.NEEDS_SIGNING == 'true'
+      - name: Set project version from tag
         run: |
-          echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 --decode | gpg --import
-          echo "default-cache-ttl 600" > ~/.gnupg/gpg-agent.conf
-          echo "max-cache-ttl 7200" >> ~/.gnupg/gpg-agent.conf
-          gpg-connect-agent reloadagent /bye
+          mvn -B -ntp versions:set -DnewVersion="${{ steps.version.outputs.VERSION }}"
+          mvn -B -ntp versions:commit
 
-      - name: Decode & Generate Settings.xml file
-        run: echo "${{ secrets.SETTINGS_XML }}" | base64 --decode > ~/.m2/settings.xml
-
-      - name: Update pom.xml version
-        run: |
-          mvn versions:set -DnewVersion=${{ steps.version.outputs.VERSION }}
-          mvn versions:commit
-
-      - name: Run tests
-        run: mvn clean test
-
-      - name: Build and deploy to Maven Central
-        run: |
-          if [[ "${{ steps.release-type.outputs.NEEDS_SIGNING }}" == "true" ]]; then
-            mvn clean package deploy --no-transfer-progress
-          else
-            mvn clean package deploy --no-transfer-progress -Dgpg.skip=true
-          fi
+      - name: Build & test (signs at verify)
+        # Your POM signs at the 'verify' phase; keep tests on for releases.
+        run: mvn -B -ntp clean verify
         env:
-          GPG_PASSPHRASE: ${{ steps.release-type.outputs.NEEDS_SIGNING == 'true' && secrets.GPG_PASSPHRASE || '' }}
+          # Some gpg setups still expect this property explicitly:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
-      - name: Verify javadoc jar was created
+      - name: Deploy to Sonatype Central
+        run: mvn -B -ntp deploy -DskipTests
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Verify artifacts & signatures
         if: always()
         run: |
-          echo "Checking for javadoc jar..."
-          find target -name "*javadoc*.jar" || echo "WARNING: Javadoc jar not found after deploy"
-          ls -la target/*.jar || true
+          echo "Artifacts in target/:"
+          ls -l target || true
+          echo
+          echo "Signature files in target/:"
+          find target -maxdepth 1 -type f -name "*.asc" -print || true
+          echo
+          echo "Local repo contents for this version:"
+          ART="$HOME/.m2/repository/org/smartregister/fhir-common-utils/${{ steps.version.outputs.VERSION }}"
+          if [ -d "$ART" ]; then ls -la "$ART"; else echo "Not found: $ART"; fi
+
+      - name: Upload build outputs (for debugging)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: target-${{ steps.version.outputs.VERSION }}
+          path: |
+            target/*.jar
+            target/*.pom
+            target/*.asc
+            target/*-sources.jar
+            target/*-javadoc.jar
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: ${{ steps.release-type.outputs.TYPE == 'snapshot' && format('Snapshot Release {0}', steps.version.outputs.VERSION) || format('Release {0}', steps.version.outputs.VERSION) }}
+          name: ${{ steps.reltype.outputs.TYPE == 'snapshot'
+                    && format('Snapshot {0}', steps.version.outputs.VERSION)
+                    || format('Release {0}', steps.version.outputs.VERSION) }}
           draft: false
-          prerelease: ${{ steps.release-type.outputs.TYPE == 'snapshot' || contains(github.ref, 'RC') || contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
+          prerelease: ${{ steps.reltype.outputs.TYPE == 'snapshot' || contains(github.ref, 'RC') || contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
