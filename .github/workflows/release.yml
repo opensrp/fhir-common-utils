@@ -38,6 +38,9 @@ jobs:
           # Configure GPG BEFORE importing keys to prevent pinentry issues
           mkdir -p ~/.gnupg
 
+          # Fix permissions on .gnupg directory (required for GPG security)
+          chmod 700 ~/.gnupg
+
           # Configure gpg.conf for batch mode
           echo "pinentry-mode loopback" > ~/.gnupg/gpg.conf
           echo "batch" >> ~/.gnupg/gpg.conf
@@ -51,11 +54,13 @@ jobs:
           echo "max-cache-ttl 7200" >> ~/.gnupg/gpg-agent.conf
           chmod 600 ~/.gnupg/gpg-agent.conf
 
-          # Kill any existing gpg-agent and restart with new config
+          # Kill any existing gpg-agent (ignore errors if not running)
           gpg-connect-agent killagent /bye 2>/dev/null || true
-          gpg-connect-agent reloadagent /bye 2>/dev/null || true
 
-          echo "✅ GPG configured for batch mode (no pinentry)"
+          # Disable gpg-agent - we don't need it in batch mode
+          echo "no-use-agent" >> ~/.gnupg/gpg.conf
+
+          echo "✅ GPG configured for batch mode (no pinentry, no agent)"
 
       - name: Configure Maven settings.xml and import GPG key
         run: |
@@ -98,17 +103,15 @@ jobs:
           if echo "$GPG_KEY" | head -n 1 | grep -q "BEGIN.*PRIVATE"; then
             # Already ASCII-armored, use directly
             echo "Detected ASCII-armored GPG key"
-            echo "$GPG_KEY" | gpg --batch --yes --passphrase-fd 0 --import 2>&1 || \
-            echo "$GPG_KEY" | gpg --batch --yes --import 2>&1
-            IMPORT_STATUS=$?
+            # Import with batch mode (gpg-agent errors are warnings, not fatal)
+            echo "$GPG_KEY" | gpg --batch --yes --no-use-agent --import 2>&1 | grep -v "gpg-agent" || true
           else
             # Try base64 decode first
             echo "Attempting base64 decode..."
             DECODED=$(echo "$GPG_KEY" | base64 -d 2>/dev/null)
             if [ $? -eq 0 ] && echo "$DECODED" | head -n 1 | grep -q "BEGIN.*PRIVATE"; then
               echo "Detected base64-encoded GPG key"
-              echo "$DECODED" | gpg --batch --yes --import 2>&1
-              IMPORT_STATUS=$?
+              echo "$DECODED" | gpg --batch --yes --no-use-agent --import 2>&1 | grep -v "gpg-agent" || true
             else
               echo "❌ Error: GPG_PRIVATE_KEY format not recognized"
               echo "Expected either:"
@@ -121,19 +124,15 @@ jobs:
             fi
           fi
 
-          if [ $IMPORT_STATUS -eq 0 ]; then
-            echo "✅ GPG key imported successfully"
-          else
-            echo "❌ Error: Failed to import GPG key (exit code: $IMPORT_STATUS)"
-            exit 1
-          fi
-
-          # Verify GPG keys are available
+          # Verify import succeeded by checking if secret keys exist
+          # (gpg-agent errors are non-fatal warnings - the key imports successfully)
+          sleep 1  # Give GPG time to finish
           KEY_COUNT=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep -c "^sec" || echo "0")
           if [ "$KEY_COUNT" -gt 0 ]; then
-            echo "✅ GPG keys configured ($KEY_COUNT key(s) available)"
+            echo "✅ GPG key imported successfully ($KEY_COUNT key(s) available)"
+            echo "ℹ️  Note: gpg-agent warnings are non-fatal - the key imports successfully"
           else
-            echo "⚠️  No GPG keys found"
+            echo "❌ Error: Failed to import GPG key - no secret keys found"
             exit 1
           fi
 
