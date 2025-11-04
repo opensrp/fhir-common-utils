@@ -78,10 +78,24 @@ jobs:
           mvn -B -ntp versions:set -DnewVersion="${{ steps.version.outputs.VERSION }}"
           mvn -B -ntp versions:commit
 
+      # NEW: show effective settings right before build (with env present)
+      - name: Show effective settings before build (sanitized)
+        run: mvn -B -ntp help:effective-settings -DshowPasswords=false | sed -n '1,300p'
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+
       - name: Build & test (signs at verify)
         run: mvn -X -B -ntp clean verify
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+
+      # NEW: show effective settings again right before deploy
+      - name: Show effective settings before deploy (sanitized)
+        run: mvn -B -ntp help:effective-settings -DshowPasswords=false | sed -n '1,300p'
+        env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
 
