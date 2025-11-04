@@ -39,20 +39,43 @@ jobs:
           java-version: "11"
           cache: maven
           overwrite-settings: true
-
-          # LITERAL credentials -> settings.xml will contain masked values (not ${env...})
-          server-id: central
-          server-username: ${{ secrets.CENTRAL_USERNAME }}   # Sonatype token NAME
-          server-password: ${{ secrets.CENTRAL_PASSWORD }}   # Sonatype token VALUE
-
-          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}     # ASCII-armored key
+          # we still let setup-java do its thing for GPG; we'll override settings.xml next
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
           gpg-passphrase:  ${{ secrets.GPG_PASSPHRASE }}
 
-      # Guard: assert settings.xml has literal creds, not ${env.*}
+      # 🔒 Force a literal ~/.m2/settings.xml with Sonatype token NAME/VALUE (no ${env.*})
+      - name: Force literal settings.xml (no ${env.*})
+        run: |
+          mkdir -p "$HOME/.m2"
+          cat > "$HOME/.m2/settings.xml" <<'XML'
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0 https://maven.apache.org/xsd/settings-1.2.0.xsd">
+            <localRepository>/home/runner/.m2/repository</localRepository>
+            <interactiveMode>false</interactiveMode>
+            <servers>
+              <server>
+                <id>central</id>
+                <username>__CENTRAL_USERNAME__</username>
+                <password>__CENTRAL_PASSWORD__</password>
+              </server>
+              <server>
+                <id>gpg.passphrase</id>
+                <passphrase>__GPG_PASSPHRASE__</passphrase>
+              </server>
+            </servers>
+          </settings>
+          XML
+          # Inject secrets as literals (GitHub masks values in logs automatically)
+          sed -i "s#__CENTRAL_USERNAME__#${{ secrets.CENTRAL_USERNAME }}#g" "$HOME/.m2/settings.xml"
+          sed -i "s#__CENTRAL_PASSWORD__#${{ secrets.CENTRAL_PASSWORD }}#g" "$HOME/.m2/settings.xml"
+          sed -i "s#__GPG_PASSPHRASE__#${{ secrets.GPG_PASSPHRASE }}#g" "$HOME/.m2/settings.xml"
+
+      # ✅ Guard: fail if any ${env.*} placeholders remain
       - name: Sanity-check raw settings.xml (should NOT contain ${env.)
         run: |
-          echo "----- RAW ~/.m2/settings.xml (first 120 lines) -----"
-          sed -n '1,120p' "$HOME/.m2/settings.xml"
+          echo "----- RAW ~/.m2/settings.xml (first 80 lines) -----"
+          sed -n '1,80p' "$HOME/.m2/settings.xml"
           echo "----------------------------------------------------"
           if grep -q '\${env\.' "$HOME/.m2/settings.xml"; then
             echo "❌ Detected \${env.*} placeholders in settings.xml. A variable-based config overwrote literal creds."
@@ -91,7 +114,6 @@ jobs:
           mvn -B -ntp versions:set -DnewVersion="${{ steps.version.outputs.VERSION }}"
           mvn -B -ntp versions:commit
 
-      # Show settings right before build (sanitized)
       - name: Show effective settings before build (sanitized)
         run: mvn -B -ntp help:effective-settings -DshowPasswords=false | sed -n '1,300p'
 
@@ -100,7 +122,6 @@ jobs:
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
-      # Show settings right before deploy (sanitized)
       - name: Show effective settings before deploy (sanitized)
         run: mvn -B -ntp help:effective-settings -DshowPasswords=false | sed -n '1,300p'
 
