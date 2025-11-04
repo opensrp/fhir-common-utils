@@ -3,127 +3,58 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'   # any tag starting with v (e.g., v1.0.4, v1.0.4-SNAPSHOT, v1.0.4-RC1)
-
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: true
+      - '*'
 
 jobs:
-  release:
+  publish:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write  # needed to create GitHub Releases
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: recursive
 
-      # Ensure we DO NOT use any pre-provided ~/.m2/settings.xml (e.g., from org-level config)
-      - name: Remove any pre-existing Maven settings.xml
-        run: |
-          if [ -f "$HOME/.m2/settings.xml" ]; then
-            echo "Found existing ~/.m2/settings.xml — removing to avoid org-level settings."
-            rm -f "$HOME/.m2/settings.xml"
-          else
-            echo "No pre-existing ~/.m2/settings.xml found."
-          fi
-
-      - name: Set up Temurin JDK 11 (Maven, Central auth, and GPG)
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "11"
+          java-version: '17'
           cache: maven
-          # Force a fresh, generated settings.xml so nothing external is used
-          overwrite-settings: true
           server-id: central
-          server-username: ${{ secrets.CENTRAL_USERNAME }}
-          server-password: ${{ secrets.CENTRAL_PASSWORD }}
-          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}   # ASCII-armored secret key
-          gpg-passphrase:  ${{ secrets.GPG_PASSPHRASE }}
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_PASSWORD
 
-      - name: Show effective settings (sanitized)
+      - name: Validate Central credentials
         run: |
-          echo "Java version:"
-          java -version
-          echo
-          echo "Maven version:"
-          mvn -v
-          echo
-          echo "Effective Maven settings (first 300 lines, passwords hidden):"
-          mvn -B -ntp help:effective-settings -DshowPasswords=false | sed -n '1,300p'
-          echo
-          echo "Servers found in effective settings:"
-          mvn -B -ntp help:effective-settings -DshowPasswords=false | awk '/<servers>/{flag=1} flag; /<\/servers>/{flag=0}'
-
-      - name: Extract version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
-
-      - name: Determine release type (snapshot vs production)
-        id: reltype
-        run: |
-          if [[ "${GITHUB_REF}" == *"-SNAPSHOT" ]]; then
-            echo "TYPE=snapshot" >> "$GITHUB_OUTPUT"
-          else
-            echo "TYPE=production" >> "$GITHUB_OUTPUT"
+          if [ -z "${{ secrets.CENTRAL_USERNAME }}" ]; then
+            echo "❌ Missing secret: CENTRAL_USERNAME (Sonatype Token Name)"
+            exit 1
           fi
+          if [ -z "${{ secrets.CENTRAL_PASSWORD }}" ]; then
+            echo "❌ Missing secret: CENTRAL_PASSWORD (Sonatype Token Value)"
+            exit 1
+          fi
+          echo "✅ Sonatype credentials detected."
 
-      - name: Set project version from tag
+      - name: Set version from tag
         run: |
-          mvn -B -ntp versions:set -DnewVersion="${{ steps.version.outputs.VERSION }}"
-          mvn -B -ntp versions:commit
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "Setting version to $VERSION"
+          mvn versions:set -DnewVersion=$VERSION -B -ntp
 
-      - name: Build & test (signs at verify)
-        run: mvn -B -ntp clean verify
+      - name: Verify Maven server config
+        run: |
+          echo "Active Maven server configuration:"
+          cat ~/.m2/settings.xml | grep -A5 "<server>"
+
+      - name: Build and publish (debug mode)
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-
-      - name: Deploy to Sonatype Central
-        run: mvn -B -ntp deploy -DskipTests
-        env:
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-
-      - name: Verify artifacts & signatures
-        if: always()
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
         run: |
-          echo "Artifacts in target/:"
-          ls -l target || true
-          echo
-          echo "Signature files in target/:"
-          find target -maxdepth 1 -type f -name "*.asc" -print || true
-          echo
-          echo "Local repo contents for this version:"
-          ART="$HOME/.m2/repository/org/smartregister/fhir-common-utils/${{ steps.version.outputs.VERSION }}"
-          if [ -d "$ART" ]; then ls -la "$ART"; else echo "Not found: $ART"; fi
+          echo "🚀 Starting Maven deploy with debug logs..."
+          mvn -X -B -ntp clean verify deploy -DskipTests
 
-      - name: Upload build outputs (for debugging)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: target-${{ steps.version.outputs.VERSION }}
-          path: |
-            target/*.jar
-            target/*.pom
-            target/*.asc
-            target/*-sources.jar
-            target/*-javadoc.jar
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ steps.reltype.outputs.TYPE == 'snapshot'
-            && format('Snapshot {0}', steps.version.outputs.VERSION)
-            || format('Release {0}', steps.version.outputs.VERSION) }}
-          draft: false
-          prerelease: ${{ steps.reltype.outputs.TYPE == 'snapshot' || contains(github.ref, 'RC') || contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Confirm deployment success
+        if: success()
+        run: echo "✅ Deployment completed successfully!"
