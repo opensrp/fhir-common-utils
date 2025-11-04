@@ -94,8 +94,8 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ steps.reltype.outputs.TYPE == 'snapshot'
-            && format('Snapshot {0}', steps.version.outputs.VERSION)
-            || format('Release {0}', steps.version.outputs.VERSION) }}
+            && format('{0}', steps.version.outputs.VERSION)
+            || format('{0}', steps.version.outputs.VERSION) }}
           draft: false
           prerelease: ${{ steps.reltype.outputs.TYPE == 'snapshot' || contains(github.ref, 'RC') || contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
           generate_release_notes: true
