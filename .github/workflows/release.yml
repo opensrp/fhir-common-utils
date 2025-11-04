@@ -13,7 +13,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # needed to create GitHub Releases
+      contents: write
 
     steps:
       - name: Checkout
@@ -22,11 +22,11 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      # Ensure we DO NOT use any pre-provided ~/.m2/settings.xml (e.g., from org-level config)
+      # Ensure we do NOT inherit an org-level ~/.m2/settings.xml
       - name: Remove any pre-existing Maven settings.xml
         run: |
           if [ -f "$HOME/.m2/settings.xml" ]; then
-            echo "Found existing ~/.m2/settings.xml — removing to avoid org-level settings."
+            echo "Found existing ~/.m2/settings.xml — removing."
             rm -f "$HOME/.m2/settings.xml"
           else
             echo "No pre-existing ~/.m2/settings.xml found."
@@ -38,7 +38,6 @@ jobs:
           distribution: temurin
           java-version: "11"
           cache: maven
-          # Force a fresh, generated settings.xml so nothing external is used
           overwrite-settings: true
 
           # LITERAL credentials -> settings.xml will contain masked values (not ${env...})
@@ -46,16 +45,27 @@ jobs:
           server-username: ${{ secrets.CENTRAL_USERNAME }}   # Sonatype token NAME
           server-password: ${{ secrets.CENTRAL_PASSWORD }}   # Sonatype token VALUE
 
-          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}   # ASCII-armored secret key
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}     # ASCII-armored key
           gpg-passphrase:  ${{ secrets.GPG_PASSPHRASE }}
+
+      # Guard: assert settings.xml has literal creds, not ${env.*}
+      - name: Sanity-check raw settings.xml (should NOT contain ${env.)
+        run: |
+          echo "----- RAW ~/.m2/settings.xml (first 120 lines) -----"
+          sed -n '1,120p' "$HOME/.m2/settings.xml"
+          echo "----------------------------------------------------"
+          if grep -q '\${env\.' "$HOME/.m2/settings.xml"; then
+            echo "❌ Detected \${env.*} placeholders in settings.xml. A variable-based config overwrote literal creds."
+            exit 1
+          else
+            echo "✅ settings.xml contains literal (masked) credentials for server id 'central'."
+          fi
 
       - name: Show effective settings (sanitized)
         run: |
-          echo "Java version:"
-          java -version
+          echo "Java version:" && java -version
           echo
-          echo "Maven version:"
-          mvn -v
+          echo "Maven version:" && mvn -v
           echo
           echo "Effective Maven settings (first 300 lines, passwords hidden):"
           mvn -B -ntp help:effective-settings -DshowPasswords=false | sed -n '1,300p'
@@ -81,7 +91,7 @@ jobs:
           mvn -B -ntp versions:set -DnewVersion="${{ steps.version.outputs.VERSION }}"
           mvn -B -ntp versions:commit
 
-      # Show settings right before build
+      # Show settings right before build (sanitized)
       - name: Show effective settings before build (sanitized)
         run: mvn -B -ntp help:effective-settings -DshowPasswords=false | sed -n '1,300p'
 
@@ -90,7 +100,7 @@ jobs:
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
-      # Show settings right before deploy
+      # Show settings right before deploy (sanitized)
       - name: Show effective settings before deploy (sanitized)
         run: mvn -B -ntp help:effective-settings -DshowPasswords=false | sed -n '1,300p'
 
