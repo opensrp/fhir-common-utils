@@ -22,15 +22,8 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      # Ensure we do NOT inherit an org-level ~/.m2/settings.xml
       - name: Remove any pre-existing Maven settings.xml
-        run: |
-          if [ -f "$HOME/.m2/settings.xml" ]; then
-            echo "Found existing ~/.m2/settings.xml — removing."
-            rm -f "$HOME/.m2/settings.xml"
-          else
-            echo "No pre-existing ~/.m2/settings.xml found."
-          fi
+        run: rm -f "$HOME/.m2/settings.xml" || true
 
       - name: Set up Temurin JDK 11 (Maven, Central auth, and GPG)
         uses: actions/setup-java@v4
@@ -39,12 +32,10 @@ jobs:
           java-version: "11"
           cache: maven
           overwrite-settings: true
-          # we still let setup-java do its thing for GPG; we'll override settings.xml next
           gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
           gpg-passphrase:  ${{ secrets.GPG_PASSPHRASE }}
 
-      # 🔒 Force a literal ~/.m2/settings.xml with Sonatype token NAME/VALUE (no ${env.*})
-      - name: Force literal settings.xml (no ${env.*})
+      - name: Configure Maven settings for Sonatype Central
         run: |
           mkdir -p "$HOME/.m2"
           cat > "$HOME/.m2/settings.xml" <<'XML'
@@ -66,35 +57,9 @@ jobs:
             </servers>
           </settings>
           XML
-          # Inject secrets as literals (GitHub masks values in logs automatically)
           sed -i "s#__CENTRAL_USERNAME__#${{ secrets.CENTRAL_USERNAME }}#g" "$HOME/.m2/settings.xml"
           sed -i "s#__CENTRAL_PASSWORD__#${{ secrets.CENTRAL_PASSWORD }}#g" "$HOME/.m2/settings.xml"
           sed -i "s#__GPG_PASSPHRASE__#${{ secrets.GPG_PASSPHRASE }}#g" "$HOME/.m2/settings.xml"
-
-      # ✅ Guard: fail if any ${env.*} placeholders remain
-      - name: Sanity-check raw settings.xml (should NOT contain ${env.)
-        run: |
-          echo "----- RAW ~/.m2/settings.xml (first 80 lines) -----"
-          sed -n '1,80p' "$HOME/.m2/settings.xml"
-          echo "----------------------------------------------------"
-          if grep -q '\${env\.' "$HOME/.m2/settings.xml"; then
-            echo "❌ Detected \${env.*} placeholders in settings.xml. A variable-based config overwrote literal creds."
-            exit 1
-          else
-            echo "✅ settings.xml contains literal (masked) credentials for server id 'central'."
-          fi
-
-      - name: Show effective settings (sanitized)
-        run: |
-          echo "Java version:" && java -version
-          echo
-          echo "Maven version:" && mvn -v
-          echo
-          echo "Effective Maven settings (first 300 lines, passwords hidden):"
-          mvn -B -ntp help:effective-settings -DshowPasswords=false | sed -n '1,300p'
-          echo
-          echo "Servers found in effective settings:"
-          mvn -B -ntp help:effective-settings -DshowPasswords=false | awk '/<servers>/{flag=1} flag; /<\/servers>/{flag=0}'
 
       - name: Extract version from tag
         id: version
@@ -114,48 +79,15 @@ jobs:
           mvn -B -ntp versions:set -DnewVersion="${{ steps.version.outputs.VERSION }}"
           mvn -B -ntp versions:commit
 
-      - name: Show effective settings before build (sanitized)
-        run: mvn -B -ntp help:effective-settings -DshowPasswords=false | sed -n '1,300p'
-
-      - name: Build & test (signs at verify)
-        run: mvn -X -B -ntp clean verify
+      - name: Build & Test (signs at verify)
+        run: mvn -B -ntp clean verify
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-
-      - name: Show effective settings before deploy (sanitized)
-        run: mvn -B -ntp help:effective-settings -DshowPasswords=false | sed -n '1,300p'
 
       - name: Deploy to Sonatype Central
-        run: mvn -X -B -ntp deploy -DskipTests
+        run: mvn -B -ntp deploy -DskipTests
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-
-      - name: Verify artifacts & signatures
-        if: always()
-        run: |
-          echo "Artifacts in target/:"
-          ls -l target || true
-          echo
-          echo "Signature files in target/:"
-          find target -maxdepth 1 -type f -name "*.asc" -print || true
-          echo
-          echo "Local repo contents for this version:"
-          ART="$HOME/.m2/repository/org/smartregister/fhir-common-utils/${{ steps.version.outputs.VERSION }}"
-          if [ -d "$ART" ]; then ls -la "$ART"; else echo "Not found: $ART"; fi
-
-      - name: Upload build outputs (for debugging)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: target-${{ steps.version.outputs.VERSION }}
-          path: |
-            target/*.jar
-            target/*.pom
-            target/*.asc
-            target/*-sources.jar
-            target/*-javadoc.jar
-          if-no-files-found: ignore
-          retention-days: 7
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
