@@ -13,7 +13,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write  # needed to create GitHub Releases
 
     steps:
       - name: Checkout
@@ -22,11 +22,11 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      # Ensure we do NOT inherit an org-level ~/.m2/settings.xml
+      # Ensure we DO NOT use any pre-provided ~/.m2/settings.xml (e.g., from org-level config)
       - name: Remove any pre-existing Maven settings.xml
         run: |
           if [ -f "$HOME/.m2/settings.xml" ]; then
-            echo "Found existing ~/.m2/settings.xml — removing."
+            echo "Found existing ~/.m2/settings.xml — removing to avoid org-level settings."
             rm -f "$HOME/.m2/settings.xml"
           else
             echo "No pre-existing ~/.m2/settings.xml found."
@@ -38,21 +38,24 @@ jobs:
           distribution: temurin
           java-version: "11"
           cache: maven
+          # Force a fresh, generated settings.xml so nothing external is used
           overwrite-settings: true
 
-          # Use VARIABLE inputs so settings.xml contains ${env.CENTRAL_USERNAME/PASSWORD}
+          # LITERAL credentials -> settings.xml will contain masked values (not ${env...})
           server-id: central
-          server-username-variable: CENTRAL_USERNAME
-          server-password-variable: CENTRAL_PASSWORD
+          server-username: ${{ secrets.CENTRAL_USERNAME }}   # Sonatype token NAME
+          server-password: ${{ secrets.CENTRAL_PASSWORD }}   # Sonatype token VALUE
 
-          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}   # ASCII-armored key
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}   # ASCII-armored secret key
           gpg-passphrase:  ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Show effective settings (sanitized)
         run: |
-          echo "Java version:" && java -version
+          echo "Java version:"
+          java -version
           echo
-          echo "Maven version:" && mvn -v
+          echo "Maven version:"
+          mvn -v
           echo
           echo "Effective Maven settings (first 300 lines, passwords hidden):"
           mvn -B -ntp help:effective-settings -DshowPasswords=false | sed -n '1,300p'
@@ -78,33 +81,23 @@ jobs:
           mvn -B -ntp versions:set -DnewVersion="${{ steps.version.outputs.VERSION }}"
           mvn -B -ntp versions:commit
 
-      # Show settings right before build with env present
+      # Show settings right before build
       - name: Show effective settings before build (sanitized)
         run: mvn -B -ntp help:effective-settings -DshowPasswords=false | sed -n '1,300p'
-        env:
-          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
-          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
 
       - name: Build & test (signs at verify)
         run: mvn -X -B -ntp clean verify
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
-          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
 
-      # Show settings right before deploy with env present
+      # Show settings right before deploy
       - name: Show effective settings before deploy (sanitized)
         run: mvn -B -ntp help:effective-settings -DshowPasswords=false | sed -n '1,300p'
-        env:
-          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
-          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
 
       - name: Deploy to Sonatype Central
         run: mvn -X -B -ntp deploy -DskipTests
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
-          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
 
       - name: Verify artifacts & signatures
         if: always()
