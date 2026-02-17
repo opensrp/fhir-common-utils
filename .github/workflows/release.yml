@@ -25,15 +25,19 @@ jobs:
       - name: Remove any pre-existing Maven settings.xml
         run: rm -f "$HOME/.m2/settings.xml" || true
 
-      - name: Set up Temurin JDK 11 (Maven, Central auth, and GPG)
+      - name: Set up Temurin JDK 11
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "11"
           cache: maven
-          overwrite-settings: true
-          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
-          gpg-passphrase:  ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+          git_user_signingkey: false
 
       - name: Configure Maven settings for Sonatype Central
         run: |
