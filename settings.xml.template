@@ -12,11 +12,11 @@
     2. Replace the placeholders with your actual Sonatype credentials
     3. Encode the file as base64: base64 -i settings.xml
     4. Add the base64-encoded content as the SETTINGS_XML secret in GitHub
-    
-    Note: With central-publishing-maven-plugin, both production and snapshot 
+
+    Note: With central-publishing-maven-plugin, both production and snapshot
     releases use the 'central' server ID with the new Central Publishing API.
   -->
-  
+
   <servers>
     <!-- For all releases via Central Publishing API -->
     <server>
@@ -25,7 +25,7 @@
       <password>YOUR_SONATYPE_PASSWORD_OR_TOKEN</password>
     </server>
   </servers>
-  
+
   <profiles>
     <profile>
       <id>gpg</id>
@@ -35,7 +35,7 @@
       </properties>
     </profile>
   </profiles>
-  
+
   <activeProfiles>
     <activeProfile>gpg</activeProfile>
   </activeProfiles>
