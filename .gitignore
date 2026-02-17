@@ -38,3 +38,4 @@ logfile
 *.log*
 .springBeans
 .gradle/
+.vscode/

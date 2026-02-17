@@ -6,21 +6,22 @@
 
     <groupId>org.smartregister</groupId>
     <artifactId>fhir-common-utils</artifactId>
-    <version>1.0.3-SNAPSHOT</version>
+    <!-- This value is overwritten by the workflow using versions:set -->
+    <version>1.0.4-SNAPSHOT</version>
     <packaging>jar</packaging>
-    
+
     <name>FHIR Common Utils</name>
     <description>Common utilities for FHIR server and mobile client</description>
     <url>https://github.com/onaio/fhir-common-utils</url>
-    
+
     <licenses>
         <license>
-            <name>The Apache License, Version 2.0</name>
-            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <name>Business Source License 1.1</name>
+            <url>https://mariadb.com/bsl11/</url>
             <distribution>repo</distribution>
         </license>
     </licenses>
-    
+
     <developers>
         <developer>
             <name>Ona Systems</name>
@@ -29,45 +30,37 @@
             <organizationUrl>https://ona.io</organizationUrl>
         </developer>
     </developers>
-    
+
     <scm>
-        <connection>scm:git:git://github.com/onaio/fhir-common-utils.git</connection>
-        <developerConnection>scm:git:ssh://github.com:onaio/fhir-common-utils.git</developerConnection>
+        <connection>scm:git:https://github.com/onaio/fhir-common-utils.git</connection>
+        <developerConnection>scm:git:git@github.com:onaio/fhir-common-utils.git</developerConnection>
         <url>https://github.com/onaio/fhir-common-utils/tree/main</url>
+        <tag>HEAD</tag>
     </scm>
 
-    <distributionManagement>
-        <repository>
-            <id>ossrh</id>
-            <name>Central Repository OSSRH</name>
-            <url>https://oss.sonatype.org/service/local/staging/deploy/maven2</url>
-        </repository>
-        <snapshotRepository>
-            <id>ossrh</id>
-            <name>Central Repository OSSRH</name>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-        </snapshotRepository>
-    </distributionManagement>
-    
     <properties>
         <maven.compiler.source>11</maven.compiler.source>
         <maven.compiler.target>11</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.encoding>UTF-8</maven.compiler.encoding>
+
+        <!-- deps -->
         <hapi.fhir.base.version>5.5.0</hapi.fhir.base.version>
-        <junit.version>4.13.1</junit.version>
         <hapifhir.version>7.4.3</hapifhir.version>
+        <junit.version>4.13.1</junit.version>
         <mockito.version>5.15.2</mockito.version>
+
+        <!-- plugin versions -->
         <maven.source.plugin.version>3.3.0</maven.source.plugin.version>
         <maven.javadoc.plugin.version>3.6.3</maven.javadoc.plugin.version>
-        <maven.gpg.plugin.version>3.1.0</maven.gpg.plugin.version>
-        <nexus.staging.plugin.version>1.6.13</nexus.staging.plugin.version>
+        <maven.gpg.plugin.version>3.2.7</maven.gpg.plugin.version>
+        <central.publishing.plugin.version>0.9.0</central.publishing.plugin.version>
     </properties>
 
     <dependencies>
         <dependency>
-            <artifactId>hapi-fhir-base</artifactId>
             <groupId>ca.uhn.hapi.fhir</groupId>
+            <artifactId>hapi-fhir-base</artifactId>
             <version>${hapi.fhir.base.version}</version>
         </dependency>
         <dependency>
@@ -78,15 +71,15 @@
         <dependency>
             <groupId>ca.uhn.hapi.fhir</groupId>
             <artifactId>hapi-fhir-client</artifactId>
-            <version>7.4.3</version>
+            <version>${hapifhir.version}</version>
         </dependency>
 
-        <!--        Test Dependencies-->
+        <!-- Test -->
         <dependency>
-            <artifactId>junit</artifactId>
             <groupId>junit</groupId>
-            <scope>test</scope>
+            <artifactId>junit</artifactId>
             <version>${junit.version}</version>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.mockito</groupId>
@@ -95,10 +88,26 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-    
+
     <build>
         <plugins>
-            <!-- Maven Source Plugin -->
+            <!-- Sonatype Central Publishing -->
+            <plugin>
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <version>${central.publishing.plugin.version}</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <publishingServerId>central</publishingServerId>
+                    <autoPublish>true</autoPublish>
+                    <waitUntil>published</waitUntil>
+                    <!-- Optional:
+                    <centralSnapshotsUrl>https://central.sonatype.com/repository/maven-snapshots/</centralSnapshotsUrl>
+                    -->
+                </configuration>
+            </plugin>
+
+            <!-- Attach sources -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>
@@ -106,37 +115,36 @@
                 <executions>
                     <execution>
                         <id>attach-sources</id>
+                        <phase>package</phase>
                         <goals>
-                            <goal>jar</goal>
+                            <goal>jar-no-fork</goal>
                         </goals>
                     </execution>
                 </executions>
             </plugin>
-            
-            <!-- Maven Javadoc Plugin -->
+
+            <!-- Attach javadocs -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
                 <version>${maven.javadoc.plugin.version}</version>
                 <configuration>
-                    <doclint>none</doclint>
                     <source>11</source>
-                    <target>11</target>
-                    <encoding>UTF-8</encoding>
-                    <charset>UTF-8</charset>
-                    <docencoding>UTF-8</docencoding>
+                    <failOnError>false</failOnError>
+                    <quiet>true</quiet>
                 </configuration>
                 <executions>
                     <execution>
                         <id>attach-javadocs</id>
+                        <phase>package</phase>
                         <goals>
                             <goal>jar</goal>
                         </goals>
                     </execution>
                 </executions>
             </plugin>
-            
-            <!-- Maven GPG Plugin for signing artifacts -->
+
+            <!-- Sign EVERYTHING at verify so .asc exist before deploy -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-gpg-plugin</artifactId>
@@ -150,18 +158,13 @@
                         </goals>
                     </execution>
                 </executions>
-            </plugin>
-            
-            <!-- Nexus Staging Plugin for releasing to Maven Central -->
-            <plugin>
-                <groupId>org.sonatype.plugins</groupId>
-                <artifactId>nexus-staging-maven-plugin</artifactId>
-                <version>${nexus.staging.plugin.version}</version>
-                <extensions>true</extensions>
                 <configuration>
-                    <serverId>ossrh</serverId>
-                    <nexusUrl>https://oss.sonatype.org/</nexusUrl>
-                    <autoReleaseAfterClose>true</autoReleaseAfterClose>
+                    <!-- Passphrase comes from env var set in the workflow -->
+                    <passphrase>${env.MAVEN_GPG_PASSPHRASE}</passphrase>
+                    <gpgArguments>
+                        <arg>--pinentry-mode</arg>
+                        <arg>loopback</arg>
+                    </gpgArguments>
                 </configuration>
             </plugin>
         </plugins>

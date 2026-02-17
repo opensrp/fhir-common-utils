@@ -3,84 +3,101 @@ name: Release
 on:
   push:
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
-      - "v[0-9]+.[0-9]+.[0-9]+-RC[0-9]+"
-      - "v[0-9]+.[0-9]+.[0-9]+-SNAPSHOT"
-      - "v[0-9]+.[0-9]+.[0-9]+-[0-9a-zA-Z]+-SNAPSHOT"
-      - "v[0-9]+.[0-9]+.[0-9]+-[0-9a-zA-Z]+-[0-9a-zA-Z]+-SNAPSHOT"
+      - 'v*'   # e.g., v1.0.4, v1.0.4-SNAPSHOT, v1.0.4-RC1
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    steps:
-      - name: Cancel previous workflow runs
-        uses: styfle/cancel-workflow-action@0.9.1
-        with:
-          access_token: ${{ github.token }}
+    permissions:
+      contents: write
 
-      - uses: actions/checkout@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           submodules: recursive
 
-      - name: Set up JDK 11
+      - name: Remove any pre-existing Maven settings.xml
+        run: rm -f "$HOME/.m2/settings.xml" || true
+
+      - name: Set up Temurin JDK 11 (Maven, Central auth, and GPG)
         uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: "11"
-          distribution: "temurin"
+          cache: maven
+          overwrite-settings: true
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase:  ${{ secrets.GPG_PASSPHRASE }}
 
-      - name: Cache Maven packages
-        uses: actions/cache@v3
-        with:
-          path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-m2
+      - name: Configure Maven settings for Sonatype Central
+        run: |
+          mkdir -p "$HOME/.m2"
+          cat > "$HOME/.m2/settings.xml" <<'XML'
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0 https://maven.apache.org/xsd/settings-1.2.0.xsd">
+            <localRepository>/home/runner/.m2/repository</localRepository>
+            <interactiveMode>false</interactiveMode>
+            <servers>
+              <server>
+                <id>central</id>
+                <username>__CENTRAL_USERNAME__</username>
+                <password>__CENTRAL_PASSWORD__</password>
+              </server>
+              <server>
+                <id>gpg.passphrase</id>
+                <passphrase>__GPG_PASSPHRASE__</passphrase>
+              </server>
+            </servers>
+          </settings>
+          XML
+          sed -i "s#__CENTRAL_USERNAME__#${{ secrets.CENTRAL_USERNAME }}#g" "$HOME/.m2/settings.xml"
+          sed -i "s#__CENTRAL_PASSWORD__#${{ secrets.CENTRAL_PASSWORD }}#g" "$HOME/.m2/settings.xml"
+          sed -i "s#__GPG_PASSPHRASE__#${{ secrets.GPG_PASSPHRASE }}#g" "$HOME/.m2/settings.xml"
 
       - name: Extract version from tag
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
-      - name: Determine release type
-        id: release-type
+      - name: Determine release type (snapshot vs production)
+        id: reltype
         run: |
-          if [[ "${{ github.ref }}" == *"-SNAPSHOT"* ]]; then
-            echo "TYPE=snapshot" >> $GITHUB_OUTPUT
-            echo "NEEDS_SIGNING=false" >> $GITHUB_OUTPUT
+          if [[ "${GITHUB_REF}" == *"-SNAPSHOT" ]]; then
+            echo "TYPE=snapshot" >> "$GITHUB_OUTPUT"
           else
-            echo "TYPE=production" >> $GITHUB_OUTPUT
-            echo "NEEDS_SIGNING=true" >> $GITHUB_OUTPUT
+            echo "TYPE=production" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Configure GPG (Production releases only)
-        if: steps.release-type.outputs.NEEDS_SIGNING == 'true'
+      - name: Set project version from tag
         run: |
-          echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 --decode | gpg --import
-          echo "default-cache-ttl 600" > ~/.gnupg/gpg-agent.conf
-          echo "max-cache-ttl 7200" >> ~/.gnupg/gpg-agent.conf
-          gpg-connect-agent reloadagent /bye
+          mvn -B -ntp versions:set -DnewVersion="${{ steps.version.outputs.VERSION }}"
+          mvn -B -ntp versions:commit
 
-      - name: Decode & Generate Settings.xml file
-        run: echo "${{ secrets.SETTINGS_XML }}" | base64 --decode > ~/.m2/settings.xml
-
-      - name: Update pom.xml version
-        run: |
-          mvn versions:set -DnewVersion=${{ steps.version.outputs.VERSION }}
-          mvn versions:commit
-
-      - name: Run tests
-        run: mvn clean test
-
-      - name: Build and deploy to Maven Central
-        run: mvn clean deploy --no-transfer-progress
+      - name: Build & Test (signs at verify)
+        run: mvn -B -ntp clean verify
         env:
-          GPG_PASSPHRASE: ${{ steps.release-type.outputs.NEEDS_SIGNING == 'true' && secrets.GPG_PASSPHRASE || '' }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Deploy to Sonatype Central
+        run: mvn -B -ntp deploy -DskipTests
+        env:
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: ${{ steps.release-type.outputs.TYPE == 'snapshot' && format('Snapshot Release {0}', steps.version.outputs.VERSION) || format('Release {0}', steps.version.outputs.VERSION) }}
+          name: ${{ steps.reltype.outputs.TYPE == 'snapshot'
+            && format('{0}', steps.version.outputs.VERSION)
+            || format('{0}', steps.version.outputs.VERSION) }}
           draft: false
-          prerelease: ${{ steps.release-type.outputs.TYPE == 'snapshot' || contains(github.ref, 'RC') || contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
+          prerelease: ${{ steps.reltype.outputs.TYPE == 'snapshot' || contains(github.ref, 'RC') || contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
